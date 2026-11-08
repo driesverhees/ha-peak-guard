@@ -1,0 +1,10 @@
+{
+  "domain": "peak_guard",
+  "name": "Peak Guard",
+  "version": "0.1.0",
+  "documentation": "https://github.com/driesverhees/ha-peak-guard",
+  "dependencies": [],
+  "codeowners": [],
+  "config_flow": true,
+  "iot_class": "local_polling"
+}
