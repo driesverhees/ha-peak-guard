@@ -9,6 +9,7 @@ from typing import Any
 
 from homeassistant.components.recorder import history as recorder_history
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
@@ -24,10 +25,14 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     a battery discharge setpoint but does not write to the battery.
     """
 
+    STORAGE_KEY = "peak_guard_runtime_state"
+    STORAGE_VERSION = 1
+
     def __init__(
         self,
         hass: HomeAssistant,
         config: dict[str, Any],
+        entry_id: str | None = None,
     ) -> None:
         super().__init__(
             hass,
@@ -37,6 +42,8 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
         self.config = config
+        self.entry_id = entry_id
+        self.store = Store(hass, self.STORAGE_VERSION, f"{self.STORAGE_KEY}_{entry_id}") if entry_id else None
         self.peak_manager = PeakManager()
 
         self.target_peak_kw = float(config.get("target_peak_kw", 3.5))
@@ -159,6 +166,39 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         return self.history_restore_success
 
+    async def async_restore_runtime_state(self) -> bool:
+        """Restore the in-memory running quarter-hour state from stored data."""
+        if self.store is None:
+            return False
+
+        try:
+            saved = await self.store.async_load()
+        except Exception:
+            _LOGGER.exception("PeakPilot could not load runtime state")
+            return False
+
+        if not saved:
+            return False
+
+        try:
+            self.peak_manager = PeakManager.from_dict(saved)
+        except Exception:
+            _LOGGER.exception("PeakPilot could not restore runtime state")
+            return False
+
+        _LOGGER.info("PeakPilot restored runtime accounting state")
+        return True
+
+    async def async_save_runtime_state(self) -> None:
+        """Persist the current accounting state for the next startup."""
+        if self.store is None:
+            return
+
+        try:
+            await self.store.async_save(self.peak_manager.to_dict())
+        except Exception:
+            _LOGGER.exception("PeakPilot could not save runtime state")
+
     def _calculate_discharge_setpoint(
         self,
         grid_power_w: float,
@@ -230,6 +270,7 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             sample_time = sample_time.replace(tzinfo=timezone.utc)
 
         self.peak_manager.update(grid_power_w, sample_time)
+        await self.async_save_runtime_state()
 
         now = dt_util.now()
         status = self.peak_manager.get_status(now)

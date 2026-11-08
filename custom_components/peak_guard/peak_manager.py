@@ -109,7 +109,7 @@ class PeakManager:
         """Invalidate every interval touched by an unmeasured time gap."""
         assert self._interval_id is not None
 
-        new_interval_id = self._interval_id(new_timestamp)
+        new_interval_id = self._get_interval_id(new_timestamp)
 
         if new_interval_id == self._interval_id:
             self._interval_valid = False
@@ -278,3 +278,43 @@ class PeakManager:
             "completed_intervals": self.completed_intervals,
             "invalid_intervals": self.invalid_intervals,
         }
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a serializable snapshot of the active accounting state."""
+        return {
+            "interval_id": self._interval_id,
+            "interval_energy_kwh": self._interval_energy_kwh,
+            "interval_coverage_seconds": self._interval_coverage_seconds,
+            "interval_valid": self._interval_valid,
+            "last_timestamp": self._last_timestamp,
+            "last_power_w": self._last_power_w,
+            "monthly_peaks": self.monthly_peaks,
+            "last_completed_peak_kw": self.last_completed_peak_kw,
+            "completed_intervals": self.completed_intervals,
+            "invalid_intervals": self.invalid_intervals,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "PeakManager":
+        """Restore an accounting state snapshot."""
+        manager = cls()
+        if not data:
+            return manager
+
+        manager._interval_id = data.get("interval_id")
+        manager._interval_energy_kwh = float(
+            data.get("interval_energy_kwh", 0.0)
+        )
+        manager._interval_coverage_seconds = float(
+            data.get("interval_coverage_seconds", 0.0)
+        )
+        manager._interval_valid = bool(data.get("interval_valid", False))
+        manager._last_timestamp = data.get("last_timestamp")
+        manager._last_power_w = data.get("last_power_w")
+        manager.monthly_peaks = dict(data.get("monthly_peaks", {}))
+        manager.last_completed_peak_kw = data.get("last_completed_peak_kw")
+        manager.completed_intervals = int(
+            data.get("completed_intervals", 0)
+        )
+        manager.invalid_intervals = int(data.get("invalid_intervals", 0))
+        return manager
