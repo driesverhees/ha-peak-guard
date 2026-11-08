@@ -303,3 +303,54 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "invalid_intervals": status["invalid_intervals"],
             "history_restore_success": self.history_restore_success,
         }
+
+    async def async_restore_monthly_peak(self) -> bool:
+        """Rebuild the current month’s peak from recorder history."""
+        entity_id = self.config["grid_sensor"]
+        now_local = dt_util.now()
+        month_start_local = now_local.replace(
+            day=1,
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+
+        month_start_utc = month_start_local.astimezone(timezone.utc)
+        now_utc = now_local.astimezone(timezone.utc)
+
+        query = partial(
+            recorder_history.get_significant_states,
+            self.hass,
+            month_start_utc,
+            now_utc,
+            entity_ids=[entity_id],
+            include_start_time_state=True,
+            significant_changes_only=False,
+            minimal_response=False,
+            no_attributes=True,
+        )
+
+        try:
+            history = await self.hass.async_add_executor_job(query)
+        except Exception:
+            _LOGGER.exception(
+                "PeakPilot could not restore monthly peak history for %s",
+                entity_id,
+            )
+            return False
+
+        states = history.get(entity_id, [])
+        if not states:
+            return False
+
+        for state in states:
+            try:
+                power_w = float(state.state)
+            except (TypeError, ValueError):
+                continue
+
+            sample_time = state.last_updated.astimezone(timezone.utc)
+            self.peak_manager.update(power_w, sample_time)
+
+        return True
