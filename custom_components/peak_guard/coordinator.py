@@ -151,6 +151,9 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.peak_manager.update(power_w, sample_time)
             replayed += 1
 
+        if self.peak_manager._interval_id is not None:
+            self.peak_manager._finish_interval()
+
         status = self.peak_manager.get_status(now_local)
         self.history_restore_success = bool(
             replayed > 0 and status["control_data_valid"]
@@ -352,5 +355,8 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             sample_time = state.last_updated.astimezone(timezone.utc)
             self.peak_manager.update(power_w, sample_time)
+
+        if self.peak_manager._interval_id is not None:
+            self.peak_manager._finish_interval()
 
         return True

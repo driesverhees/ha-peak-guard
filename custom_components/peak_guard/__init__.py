@@ -17,8 +17,11 @@ async def async_setup_entry(
     if not await coordinator.async_restore_runtime_state():
         await coordinator.async_restore_current_interval()
 
-    if not coordinator.peak_manager.monthly_peaks:
-        await coordinator.async_restore_monthly_peak()
+    # Rebuild the current month from Recorder history at startup. This ensures
+    # the monthly peak is restored even if the runtime snapshot is missing,
+    # incomplete, or the current quarter-hour has not yet exceeded the
+    # historical peak from earlier in the month.
+    await coordinator.async_restore_monthly_peak()
 
     await coordinator.async_config_entry_first_refresh()
 

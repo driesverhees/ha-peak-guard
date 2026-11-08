@@ -9,6 +9,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from homeassistant.util import dt as dt_util
+
 
 class PeakManager:
     """Integrate grid import and track valid quarter-hour peaks."""
@@ -210,6 +212,23 @@ class PeakManager:
         self._last_power_w = power_w
         return self.get_status(now)
 
+    def current_month_peak_kw(self, now: datetime) -> float | None:
+        """Return the current month peak, with a safe fallback if the key is absent."""
+        local_tz = self._timezone or dt_util.DEFAULT_TIME_ZONE
+        month = now.astimezone(local_tz).strftime("%Y-%m")
+
+        peak = self.monthly_peaks.get(month)
+        if peak is not None:
+            return peak
+
+        if self.last_completed_peak_kw is not None:
+            return self.last_completed_peak_kw
+
+        if self.monthly_peaks:
+            return max(self.monthly_peaks.values())
+
+        return None
+
     def get_status(self, now: datetime) -> dict[str, Any]:
         """Return accounting status without assuming missing energy is zero."""
         if now.tzinfo is None or now.utcoffset() is None:
@@ -233,7 +252,7 @@ class PeakManager:
                 "imported_energy_kwh": None,
                 "coverage_seconds": 0.0,
                 "remaining_seconds": None,
-                "monthly_peak_kw": self.monthly_peaks.get(month),
+                "monthly_peak_kw": self.current_month_peak_kw(now),
                 "last_completed_peak_kw": self.last_completed_peak_kw,
                 "completed_intervals": self.completed_intervals,
                 "invalid_intervals": self.invalid_intervals,
@@ -273,7 +292,7 @@ class PeakManager:
             "elapsed_seconds": elapsed,
             "remaining_seconds": remaining,
             "average_import_so_far_kw": average_so_far_kw,
-            "monthly_peak_kw": self.monthly_peaks.get(month),
+            "monthly_peak_kw": self.current_month_peak_kw(now),
             "last_completed_peak_kw": self.last_completed_peak_kw,
             "completed_intervals": self.completed_intervals,
             "invalid_intervals": self.invalid_intervals,
