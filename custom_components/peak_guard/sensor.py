@@ -67,4 +67,10 @@ async def async_setup_entry(hass, entry, async_add_entities):
             "Quarter-hour Remaining Time",
             "s",
         ),
+        CapacitySensor(
+            coordinator,
+            "remaining_power_w",
+            "Quarter-hour Remaining Power",
+            "W",
+        ),
     ])

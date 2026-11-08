@@ -239,6 +239,30 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         return min(required_discharge_w, self.max_discharge_w)
 
+    def _calculate_remaining_power_w(
+        self,
+        status: dict[str, Any],
+    ) -> float:
+        """Return the allowed grid import power remaining in the current quarter."""
+        if not status["control_data_valid"]:
+            return 0.0
+
+        remaining_seconds = status["remaining_seconds"]
+        imported_energy_kwh = status["imported_energy_kwh"]
+
+        if remaining_seconds is None or remaining_seconds <= 0:
+            return 0.0
+
+        max_interval_energy_kwh = self.target_peak_kw * 0.25
+        remaining_energy_kwh = max(
+            0.0,
+            max_interval_energy_kwh - (imported_energy_kwh or 0.0),
+        )
+
+        return (
+            remaining_energy_kwh * 3_600_000.0 / remaining_seconds
+        )
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Read current Home Assistant states and update the peak manager."""
         grid_entity = self.config["grid_sensor"]
@@ -283,12 +307,14 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             battery_soc,
             status,
         )
+        remaining_power_w = self._calculate_remaining_power_w(status)
 
         return {
             "available": True,
             "grid_power_w": grid_power_w,
             "battery_soc": battery_soc,
             "battery_setpoint_w": setpoint_w,
+            "remaining_power_w": remaining_power_w,
             "target_peak_kw": self.target_peak_kw,
             "imported_energy_kwh": status["imported_energy_kwh"],
             "coverage_seconds": status["coverage_seconds"],
