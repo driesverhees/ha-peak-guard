@@ -7,6 +7,8 @@ from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
 )
 
+from .const import DOMAIN
+
 
 class CapacitySensor(CoordinatorEntity, SensorEntity):
 
@@ -26,7 +28,7 @@ class CapacitySensor(CoordinatorEntity, SensorEntity):
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    coordinator = hass.data["capacity_optimizer"][entry.entry_id]
+    coordinator = hass.data[DOMAIN][entry.entry_id]
 
     async_add_entities([
         CapacitySensor(
