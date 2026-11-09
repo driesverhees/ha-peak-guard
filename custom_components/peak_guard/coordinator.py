@@ -7,6 +7,7 @@ from functools import partial
 import logging
 from typing import Any
 
+from custom_components.peak_guard.controller import PeakShavingController
 from homeassistant.components.recorder import history as recorder_history
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -239,36 +240,16 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         battery_soc: float,
         status: dict[str, Any],
     ) -> float:
-        """Calculate a positive battery discharge request in watts."""
-        if battery_soc <= self.min_soc:
-            return 0.0
-
-        if not status["control_data_valid"]:
-            return 0.0
-
-        remaining_seconds = status["remaining_seconds"]
-        imported_energy_kwh = status["imported_energy_kwh"]
-
-        if remaining_seconds is None or remaining_seconds <= 0:
-            return 0.0
-
-        max_interval_energy_kwh = self.target_peak_kw * 0.25
-        remaining_energy_kwh = (
-            max_interval_energy_kwh - imported_energy_kwh
+        control = PeakShavingController(
+            grid_power_w=grid_power_w,
+            imported_energy_kwh=status["imported_energy_kwh"],
+            remaining_seconds=status["remaining_seconds"],
+            target_peak_kw=self.target_peak_kw,
+            max_discharge_w=self.max_discharge_w,
+            min_soc=self.min_soc,
+            battery_soc=battery_soc,
         )
-
-        allowed_grid_power_w = (
-            remaining_energy_kwh
-            * 3_600_000.0
-            / remaining_seconds
-        )
-
-        required_discharge_w = max(
-            0.0,
-            grid_power_w - allowed_grid_power_w,
-        )
-
-        return min(required_discharge_w, self.max_discharge_w)
+        return control.calculate_discharge_setpoint()
 
     def _calculate_remaining_power_w(
         self,
