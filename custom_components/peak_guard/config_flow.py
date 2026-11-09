@@ -29,18 +29,6 @@ class CapacityOptimizerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
                 vol.Required(
-                    "target_peak_kw",
-                    default=defaults.get("target_peak_kw", 3.5),
-                ): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=0.5,
-                        max=20,
-                        step=0.1,
-                        unit_of_measurement="kW",
-                        mode=selector.NumberSelectorMode.BOX,
-                    )
-                ),
-                vol.Required(
                     "max_discharge_w",
                     default=defaults.get("max_discharge_w", 2500),
                 ): selector.NumberSelector(

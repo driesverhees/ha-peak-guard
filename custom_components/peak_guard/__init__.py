@@ -5,14 +5,18 @@ from .coordinator import CapacityCoordinator
 
 from .const import DOMAIN
 
-PLATFORMS = ["sensor"]
+PLATFORMS = ["sensor", "number"]
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
 ):
-    coordinator = CapacityCoordinator(hass, entry.data, entry.entry_id)
+    coordinator = CapacityCoordinator(
+        hass,
+        {**entry.data, **entry.options},
+        entry,
+    )
 
     if not await coordinator.async_restore_runtime_state():
         await coordinator.async_restore_current_interval()

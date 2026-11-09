@@ -8,6 +8,7 @@ import logging
 from typing import Any
 
 from homeassistant.components.recorder import history as recorder_history
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -32,7 +33,7 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self,
         hass: HomeAssistant,
         config: dict[str, Any],
-        entry_id: str | None = None,
+        config_entry: ConfigEntry,
     ) -> None:
         super().__init__(
             hass,
@@ -42,8 +43,13 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
         self.config = config
-        self.entry_id = entry_id
-        self.store = Store(hass, self.STORAGE_VERSION, f"{self.STORAGE_KEY}_{entry_id}") if entry_id else None
+        self.config_entry = config_entry
+        self.entry_id = config_entry.entry_id
+        self.store = Store(
+            hass,
+            self.STORAGE_VERSION,
+            f"{self.STORAGE_KEY}_{self.entry_id}",
+        )
         self.peak_manager = PeakManager()
 
         self.target_peak_kw = float(config.get("target_peak_kw", 3.5))
@@ -52,6 +58,18 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         self.history_restore_attempted = False
         self.history_restore_success = False
+
+    async def async_set_target_peak_kw(self, target_peak_kw: float) -> None:
+        """Persist a new target and refresh the calculated setpoint."""
+        self.target_peak_kw = target_peak_kw
+        self.hass.config_entries.async_update_entry(
+            self.config_entry,
+            options={
+                **self.config_entry.options,
+                "target_peak_kw": target_peak_kw,
+            },
+        )
+        await self.async_request_refresh()
 
     @staticmethod
     def _quarter_start(now: datetime) -> datetime:
