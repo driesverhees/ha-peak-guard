@@ -55,6 +55,7 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.target_peak_kw = float(config.get("target_peak_kw", 3.5))
         self.max_discharge_w = float(config.get("max_discharge_w", 2500))
         self.min_soc = float(config.get("min_soc", 20.0))
+        self.switch_soc_threshold = float(config.get("switch_soc_threshold", 20.0))
 
         self.history_restore_attempted = False
         self.history_restore_success = False
@@ -67,6 +68,18 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             options={
                 **self.config_entry.options,
                 "target_peak_kw": target_peak_kw,
+            },
+        )
+        await self.async_request_refresh()
+
+    async def async_set_switch_soc_threshold(self, switch_soc_threshold: float) -> None:
+        """Persist a new switch SOC threshold and refresh the calculated setpoint."""
+        self.switch_soc_threshold = switch_soc_threshold
+        self.hass.config_entries.async_update_entry(
+            self.config_entry,
+            options={
+                **self.config_entry.options,
+                "switch_soc_threshold": switch_soc_threshold,
             },
         )
         await self.async_request_refresh()
