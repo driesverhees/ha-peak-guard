@@ -279,28 +279,19 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Read current Home Assistant states and update the peak manager."""
         grid_entity = self.config["grid_sensor"]
         soc_entity = self.config["soc_sensor"]
-
         grid_state = self.hass.states.get(grid_entity)
         soc_state = self.hass.states.get(soc_entity)
 
-        if grid_state is None or grid_state.state in (
-            "unknown", "unavailable"
-        ):
+        if grid_state is None or grid_state.state in ("unknown", "unavailable"):
             return {"available": False, "reason": "grid_sensor_unavailable"}
-
-        if soc_state is None or soc_state.state in (
-            "unknown", "unavailable"
-        ):
+        if soc_state is None or soc_state.state in ("unknown", "unavailable"):
             return {"available": False, "reason": "soc_sensor_unavailable"}
 
         try:
             grid_power_w = float(grid_state.state)
             battery_soc = float(soc_state.state)
         except (TypeError, ValueError) as err:
-            return {
-                "available": False,
-                "reason": f"invalid_sensor_value: {err}",
-            }
+            return {"available": False, "reason": f"invalid_sensor_value: {err}"}
 
         # Use the sensor's measurement timestamp, not the coordinator poll
         # time. This avoids pretending a stale sensor value is a fresh sample.
