@@ -246,7 +246,11 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             remaining_seconds=status["remaining_seconds"],
             target_peak_kw=self.target_peak_kw,
             max_discharge_w=self.max_discharge_w,
+            max_charge_w=1000.0,
+            max_grid_charge_w=1000.0,
             min_soc=self.min_soc,
+            switch_soc=self.switch_soc_threshold,
+            grid_charging_soc=15.0,
             battery_soc=battery_soc,
         )
         return control.calculate_discharge_setpoint()
