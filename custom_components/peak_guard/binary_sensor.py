@@ -5,7 +5,7 @@ from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.config_entries import ConfigEntry
 from .const import DOMAIN
-from .entities import PeakGuardEntity
+from .entity import PeakGuardEntity
 
 class PeakGuardBinarySensor(PeakGuardEntity, BinarySensorEntity):
     """Representation of a Peak Guard binary sensor."""
