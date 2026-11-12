@@ -1,19 +1,13 @@
-from homeassistant.components.sensor import (
-    SensorEntity,
-    SensorDeviceClass,
-    SensorStateClass,
-)
-from homeassistant.helpers.update_coordinator import (
-    CoordinatorEntity,
-)
+from custom_components.peak_guard.coordinator import CapacityCoordinator
+from homeassistant.components.sensor import SensorEntity
 
 from .const import DOMAIN
+from .entity import PeakGuardEntity
 
+class CapacitySensor(PeakGuardEntity, SensorEntity):
 
-class CapacitySensor(CoordinatorEntity, SensorEntity):
-
-    def __init__(self, coordinator, key, name, unit):
-        super().__init__(coordinator)
+    def __init__(self, coordinator : CapacityCoordinator, key, name, unit):
+        super().__init__(coordinator, coordinator.config_entry)
         self._key = key
         self._attr_name = name
         self._attr_unique_id = f"capacity_optimizer_{key}"
@@ -28,7 +22,7 @@ class CapacitySensor(CoordinatorEntity, SensorEntity):
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator : CapacityCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     async_add_entities([
         CapacitySensor(
