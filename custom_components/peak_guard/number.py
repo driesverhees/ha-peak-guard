@@ -10,9 +10,9 @@ from homeassistant.const import PERCENTAGE, UnitOfElectricCurrent, UnitOfPower
 
 from .const import DOMAIN
 from .coordinator import CapacityCoordinator
+from .entity import PeakGuardEntity
 
-
-class TargetPeakNumber(CoordinatorEntity[CapacityCoordinator], NumberEntity):
+class TargetPeakNumber(PeakGuardEntity, NumberEntity):
     """Expose the target peak as a configurable number."""
 
     _attr_has_entity_name = True
@@ -26,7 +26,7 @@ class TargetPeakNumber(CoordinatorEntity[CapacityCoordinator], NumberEntity):
     _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator: CapacityCoordinator) -> None:
-        super().__init__(coordinator)
+        super().__init__(coordinator, coordinator.config_entry)
         self._attr_unique_id = f"{coordinator.entry_id}_target_peak_kw"
 
     @property
@@ -41,7 +41,7 @@ class TargetPeakNumber(CoordinatorEntity[CapacityCoordinator], NumberEntity):
             )
         await self.coordinator.async_set_target_peak_kw(value)
 
-class SwitchSocThresholdNumber(CoordinatorEntity[CapacityCoordinator], NumberEntity):
+class SwitchSocThresholdNumber(PeakGuardEntity, NumberEntity):
     """Expose the switch SOC threshold as a configurable number."""
 
     _attr_has_entity_name = True
@@ -54,7 +54,7 @@ class SwitchSocThresholdNumber(CoordinatorEntity[CapacityCoordinator], NumberEnt
     _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator: CapacityCoordinator) -> None:
-        super().__init__(coordinator)
+        super().__init__(coordinator, coordinator.config_entry)
         self._attr_unique_id = f"{coordinator.entry_id}_switch_soc_threshold"
 
     @property
@@ -70,11 +70,7 @@ class SwitchSocThresholdNumber(CoordinatorEntity[CapacityCoordinator], NumberEnt
         await self.coordinator.async_set_switch_soc_threshold(value)
 
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+    coordinator : CapacityCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([TargetPeakNumber(coordinator)])
     async_add_entities([SwitchSocThresholdNumber(coordinator)])
