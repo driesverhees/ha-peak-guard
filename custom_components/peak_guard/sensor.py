@@ -67,4 +67,40 @@ async def async_setup_entry(hass, entry, async_add_entities):
             "Quarter-hour Remaining Power",
             "W",
         ),
+        CapacitySensor(
+            coordinator,
+            "allowed_grid_power_w",
+            "Allowed Remaining Grid Power",
+            "W",
+        ),
+        CapacitySensor(
+            coordinator,
+            "predicted_peak_kw",
+            "Uncontrolled Projected Quarter-hour Peak",
+            "kW",
+        ),
+        CapacitySensor(
+            coordinator,
+            "pi_error_w",
+            "PI Controller Error",
+            "W",
+        ),
+        CapacitySensor(
+            coordinator,
+            "pi_integral_w",
+            "PI Integral Contribution",
+            "W",
+        ),
+        CapacitySensor(
+            coordinator,
+            "pi_raw_output_w",
+            "PI Unconstrained Output",
+            "W",
+        ),
+        CapacitySensor(
+            coordinator,
+            "controller_status",
+            "Controller Status",
+            None,
+        ),
     ])

@@ -7,7 +7,7 @@ from functools import partial
 import logging
 from typing import Any
 
-from custom_components.peak_guard.controller import PeakShavingController
+from .controller import PeakPIController
 from homeassistant.components.recorder import history as recorder_history
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -16,6 +16,16 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .peak_manager import PeakManager
+from .const import (
+    DEFAULT_PI_KP,
+    DEFAULT_PI_KI,
+    DEFAULT_ACTIVATION_THRESHOLD_W,
+    DEFAULT_DEACTIVATION_THRESHOLD_W,
+    DEFAULT_RAMP_RATE_W_PER_S,
+    DEFAULT_MINIMUM_ON_TIME_S,
+    DEFAULT_MINIMUM_OFF_TIME_S,
+    DEFAULT_FILTER_TIME_S,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -58,8 +68,64 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.min_soc = float(config.get("min_soc", 20.0))
         self.switch_soc_threshold = float(config.get("switch_soc_threshold", 20.0))
 
+        self.controller_settings = {
+            "pi_kp": float(config.get("pi_kp", DEFAULT_PI_KP)),
+            "pi_ki": float(config.get("pi_ki", DEFAULT_PI_KI)),
+            "activation_threshold_w": float(config.get(
+                "activation_threshold_w", DEFAULT_ACTIVATION_THRESHOLD_W
+            )),
+            "deactivation_threshold_w": float(config.get(
+                "deactivation_threshold_w", DEFAULT_DEACTIVATION_THRESHOLD_W
+            )),
+            "ramp_rate_w_per_s": float(config.get(
+                "ramp_rate_w_per_s", DEFAULT_RAMP_RATE_W_PER_S
+            )),
+            "minimum_on_time_s": float(config.get(
+                "minimum_on_time_s", DEFAULT_MINIMUM_ON_TIME_S
+            )),
+            "minimum_off_time_s": float(config.get(
+                "minimum_off_time_s", DEFAULT_MINIMUM_OFF_TIME_S
+            )),
+            "filter_time_s": float(config.get(
+                "filter_time_s", DEFAULT_FILTER_TIME_S
+            )),
+        }
+        self.controller = self._new_controller()
+
         self.history_restore_attempted = False
         self.history_restore_success = False
+
+    def _new_controller(self) -> PeakPIController:
+        """Create the PI controller from the current options."""
+        return PeakPIController(
+            kp=self.controller_settings["pi_kp"],
+            ki=self.controller_settings["pi_ki"],
+            activation_threshold_w=self.controller_settings["activation_threshold_w"],
+            deactivation_threshold_w=self.controller_settings["deactivation_threshold_w"],
+            ramp_rate_w_per_s=self.controller_settings["ramp_rate_w_per_s"],
+            minimum_on_time_s=self.controller_settings["minimum_on_time_s"],
+            minimum_off_time_s=self.controller_settings["minimum_off_time_s"],
+            filter_time_s=self.controller_settings["filter_time_s"],
+            max_discharge_w=self.max_discharge_w,
+            min_soc=self.min_soc,
+        )
+
+    async def async_set_controller_setting(self, key: str, value: float) -> None:
+        """Persist a controller tuning value and update the live controller."""
+        if key not in self.controller_settings:
+            raise ValueError(f"Unknown controller setting: {key}")
+        self.controller_settings[key] = float(value)
+        previous_state = self.controller.to_dict()
+        self.controller = self._new_controller()
+        self.controller.restore_state(previous_state)
+        self.hass.config_entries.async_update_entry(
+            self.config_entry,
+            options={
+                **self.config_entry.options,
+                key: float(value),
+            },
+        )
+        await self.async_request_refresh()
 
     async def async_set_target_peak_kw(self, target_peak_kw: float) -> None:
         """Persist a new target and refresh the calculated setpoint."""
@@ -216,12 +282,18 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return False
 
         try:
-            self.peak_manager = PeakManager.from_dict(saved)
+            # Accept the original v1 snapshot (PeakManager fields at root)
+            # as well as the extended snapshot containing controller state.
+            if "peak_manager" in saved:
+                self.peak_manager = PeakManager.from_dict(saved["peak_manager"])
+                self.controller.restore_state(saved.get("controller"))
+            else:
+                self.peak_manager = PeakManager.from_dict(saved)
         except Exception:
             _LOGGER.exception("PeakPilot could not restore runtime state")
             return False
 
-        _LOGGER.info("PeakPilot restored runtime accounting state")
+        _LOGGER.info("PeakPilot restored runtime accounting and controller state")
         return True
 
     async def async_save_runtime_state(self) -> None:
@@ -230,30 +302,12 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
 
         try:
-            await self.store.async_save(self.peak_manager.to_dict())
+            await self.store.async_save({
+                "peak_manager": self.peak_manager.to_dict(),
+                "controller": self.controller.to_dict(),
+            })
         except Exception:
             _LOGGER.exception("PeakPilot could not save runtime state")
-
-    def _calculate_discharge_setpoint(
-        self,
-        grid_power_w: float,
-        battery_soc: float,
-        status: dict[str, Any],
-    ) -> float:
-        control = PeakShavingController(
-            grid_power_w=grid_power_w,
-            imported_energy_kwh=status["imported_energy_kwh"],
-            remaining_seconds=status["remaining_seconds"],
-            target_peak_kw=self.target_peak_kw,
-            max_discharge_w=self.max_discharge_w,
-            max_charge_w=1000.0,
-            max_grid_charge_w=1000.0,
-            min_soc=self.min_soc,
-            switch_soc=self.switch_soc_threshold,
-            grid_charging_soc=15.0,
-            battery_soc=battery_soc,
-        )
-        return control.calculate_discharge_setpoint()
 
     def _calculate_remaining_power_w(
         self,
@@ -304,17 +358,32 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             sample_time = sample_time.replace(tzinfo=timezone.utc)
 
         self.peak_manager.update(grid_power_w, sample_time)
-        await self.async_save_runtime_state()
 
         now = dt_util.now()
         status = self.peak_manager.get_status(now)
 
-        setpoint_w = self._calculate_discharge_setpoint(
-            grid_power_w,
-            battery_soc,
-            status,
-        )
         remaining_power_w = self._calculate_remaining_power_w(status)
+
+        if status["control_data_valid"] and remaining_power_w is not None:
+            setpoint_w = self.controller.update(
+                grid_power_w=grid_power_w,
+                allowed_grid_power_w=remaining_power_w,
+                battery_soc=battery_soc,
+                now=now,
+                max_discharge_w=self.max_discharge_w,
+            )
+        else:
+            setpoint_w = self.controller.inhibit()
+
+        await self.async_save_runtime_state()
+
+        predicted_peak_kw = None
+        if status["imported_energy_kwh"] is not None and status["remaining_seconds"] is not None:
+            projected_energy_kwh = (
+                status["imported_energy_kwh"]
+                + max(0.0, grid_power_w) * status["remaining_seconds"] / 3_600_000.0
+            )
+            predicted_peak_kw = projected_energy_kwh / 0.25
 
         return {
             "available": True,
@@ -322,6 +391,13 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "battery_soc": battery_soc,
             "battery_setpoint_w": setpoint_w,
             "remaining_power_w": remaining_power_w,
+            "allowed_grid_power_w": remaining_power_w,
+            "predicted_peak_kw": predicted_peak_kw,
+            "pi_error_w": self.controller.error_w,
+            "pi_integral_w": self.controller.integral_w,
+            "pi_raw_output_w": self.controller.raw_output_w,
+            "controller_active": self.controller.is_active,
+            "controller_status": self.controller.status,
             "target_peak_kw": self.target_peak_kw,
             "imported_energy_kwh": status["imported_energy_kwh"],
             "coverage_seconds": status["coverage_seconds"],

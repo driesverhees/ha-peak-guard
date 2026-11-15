@@ -37,5 +37,6 @@ async def async_setup_entry(hass : HomeAssistant, entry : ConfigEntry, async_add
     coordinator : CapacityCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([
         PeakGuardBinarySensor(coordinator, "control_data_valid", "Control Data Valid", "mdi:check-circle"), #"Flag indicating whether the data used by the control algorithm is sufficiently reliable to make control decisions", 
-        PeakGuardBinarySensor(coordinator, "battery_setpoint_w", "Discharge Required", "mdi:battery-arrow-down")
+        PeakGuardBinarySensor(coordinator, "battery_setpoint_w", "Discharge Required", "mdi:battery-arrow-down"),
+        PeakGuardBinarySensor(coordinator, "controller_active", "PI Controller Active", "mdi:chart-bell-curve"),
     ])
