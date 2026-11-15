@@ -15,7 +15,7 @@ class TargetPeakNumber(PeakGuardEntity, NumberEntity):
 
     _attr_has_entity_name = True
     _attr_name = "Target Peak"
-    _attr_native_min_value = 0.5
+    _attr_native_min_value = 0.1
     _attr_native_max_value = 20
     _attr_native_step = 0.1
     _attr_native_unit_of_measurement = "kW"
