@@ -180,6 +180,9 @@ class PeakPIController:
         # achievable command for this update and is used by back-calculation.
         desired = self._clamp(raw_output, 0.0, power_limit)
         new_power = self._apply_ramp(desired, dt)
+        # Export prevention is a hard safety constraint. It deliberately
+        # overrides the normal ramp-down limit if the safe ceiling falls.
+        new_power = min(new_power, power_limit)
 
         # Back-calculation anti-windup:
         #   dI/dt = Ki * error + (u_limited - u_raw) / Tt

@@ -39,6 +39,18 @@ async def async_setup_entry(hass, entry, async_add_entities):
         ),
         CapacitySensor(
             coordinator,
+            "battery_power_w",
+            "Measured Battery Power",
+            "W",
+        ),
+        CapacitySensor(
+            coordinator,
+            "export_safe_max_discharge_w",
+            "Export-safe Maximum Discharge",
+            "W",
+        ),
+        CapacitySensor(
+            coordinator,
             "battery_setpoint_w",
             "Battery Setpoint",
             "W",

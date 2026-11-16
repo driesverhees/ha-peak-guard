@@ -26,6 +26,7 @@ from .const import (
     DEFAULT_MINIMUM_OFF_TIME_S,
     DEFAULT_FILTER_TIME_S,
     DEFAULT_ANTI_WINDUP_TIME_S,
+    DEFAULT_EXPORT_SAFETY_MARGIN_W,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -93,7 +94,12 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "anti_windup_time_s": float(config.get(
                 "anti_windup_time_s", DEFAULT_ANTI_WINDUP_TIME_S
             )),
+            "export_safety_margin_w": float(config.get(
+                "export_safety_margin_w", DEFAULT_EXPORT_SAFETY_MARGIN_W
+            )),
         }
+        self.battery_power_sensor = config.get("battery_power_sensor")
+        self.battery_power_sign = config.get("battery_power_sign", "positive_discharge")
         self.controller = self._new_controller()
 
         self.history_restore_attempted = False
@@ -338,23 +344,54 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             remaining_energy_kwh * 3_600_000.0 / remaining_seconds
         )
 
+    @staticmethod
+    def _state_power_to_w(state: Any) -> float:
+        """Convert a sensor power state in W or kW to watts."""
+        value = float(state.state)
+        unit = (state.attributes.get("unit_of_measurement") or "W").lower()
+        if unit in ("kw", "kilowatt", "kilowatts"):
+            value *= 1000.0
+        elif unit not in ("w", "watt", "watts"):
+            raise ValueError(f"Unsupported power unit: {unit}")
+        return value
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Read current Home Assistant states and update the peak manager."""
         grid_entity = self.config["grid_sensor"]
         soc_entity = self.config["soc_sensor"]
         grid_state = self.hass.states.get(grid_entity)
         soc_state = self.hass.states.get(soc_entity)
+        battery_power_state = self.hass.states.get(self.battery_power_sensor) if self.battery_power_sensor else None
 
         if grid_state is None or grid_state.state in ("unknown", "unavailable"):
             return {"available": False, "reason": "grid_sensor_unavailable"}
         if soc_state is None or soc_state.state in ("unknown", "unavailable"):
             return {"available": False, "reason": "soc_sensor_unavailable"}
+        if battery_power_state is None or battery_power_state.state in ("unknown", "unavailable"):
+            self.controller.inhibit("battery_power_sensor_unavailable")
+            return {"available": False, "reason": "battery_power_sensor_unavailable"}
 
         try:
-            grid_power_w = float(grid_state.state)
+            grid_power_w = self._state_power_to_w(grid_state)
             battery_soc = float(soc_state.state)
+            battery_power_raw_w = self._state_power_to_w(battery_power_state)
         except (TypeError, ValueError) as err:
+            self.controller.inhibit("invalid_battery_or_grid_power")
             return {"available": False, "reason": f"invalid_sensor_value: {err}"}
+
+        # The controller convention is positive = battery discharge.
+        battery_power_w = (
+            battery_power_raw_w
+            if self.battery_power_sign == "positive_discharge"
+            else -battery_power_raw_w
+        )
+        export_margin_w = self.controller_settings["export_safety_margin_w"]
+        # Net grid import plus current battery discharge estimates household
+        # consumption. Limit the absolute discharge setpoint so it cannot
+        # exceed that consumption minus the configured safety margin.
+        export_safe_max_w = max(
+            0.0, grid_power_w + battery_power_w - export_margin_w
+        )
 
         # Use the sensor's measurement timestamp, not the coordinator poll
         # time. This avoids pretending a stale sensor value is a fresh sample.
@@ -375,7 +412,7 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 allowed_grid_power_w=remaining_power_w,
                 battery_soc=battery_soc,
                 now=now,
-                max_discharge_w=self.max_discharge_w,
+                max_discharge_w=min(self.max_discharge_w, export_safe_max_w),
             )
         else:
             setpoint_w = self.controller.inhibit()
@@ -394,6 +431,9 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "available": True,
             "grid_power_w": grid_power_w,
             "battery_soc": battery_soc,
+            "battery_power_w": battery_power_w,
+            "export_safe_max_discharge_w": export_safe_max_w,
+            "export_safety_margin_w": export_margin_w,
             "battery_setpoint_w": setpoint_w,
             "remaining_power_w": remaining_power_w,
             "allowed_grid_power_w": remaining_power_w,

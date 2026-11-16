@@ -29,6 +29,24 @@ class CapacityOptimizerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
                 vol.Required(
+                    "battery_power_sensor",
+                    default=defaults.get("battery_power_sensor"),
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor")
+                ),
+                vol.Required(
+                    "battery_power_sign",
+                    default=defaults.get("battery_power_sign", "positive_discharge"),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            {"value": "positive_discharge", "label": "Positive = discharging"},
+                            {"value": "positive_charge", "label": "Positive = charging"},
+                        ],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Required(
                     "max_discharge_w",
                     default=defaults.get("max_discharge_w", 2500),
                 ): selector.NumberSelector(
