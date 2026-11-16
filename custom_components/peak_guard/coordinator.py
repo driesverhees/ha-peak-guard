@@ -25,6 +25,7 @@ from .const import (
     DEFAULT_MINIMUM_ON_TIME_S,
     DEFAULT_MINIMUM_OFF_TIME_S,
     DEFAULT_FILTER_TIME_S,
+    DEFAULT_ANTI_WINDUP_TIME_S,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -89,6 +90,9 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "filter_time_s": float(config.get(
                 "filter_time_s", DEFAULT_FILTER_TIME_S
             )),
+            "anti_windup_time_s": float(config.get(
+                "anti_windup_time_s", DEFAULT_ANTI_WINDUP_TIME_S
+            )),
         }
         self.controller = self._new_controller()
 
@@ -106,6 +110,7 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             minimum_on_time_s=self.controller_settings["minimum_on_time_s"],
             minimum_off_time_s=self.controller_settings["minimum_off_time_s"],
             filter_time_s=self.controller_settings["filter_time_s"],
+            anti_windup_time_s=self.controller_settings["anti_windup_time_s"],
             max_discharge_w=self.max_discharge_w,
             min_soc=self.min_soc,
         )

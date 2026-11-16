@@ -118,4 +118,5 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         ControllerSettingNumber(coordinator, "minimum_on_time_s", "Minimum Battery On Time", 0, 900, 10, "s"),
         ControllerSettingNumber(coordinator, "minimum_off_time_s", "Minimum Battery Off Time", 0, 900, 10, "s"),
         ControllerSettingNumber(coordinator, "filter_time_s", "Grid Power Filter Time", 0, 60, 1, "s"),
+        ControllerSettingNumber(coordinator, "anti_windup_time_s", "PI Anti-windup Tracking Time", 1, 120, 1, "s"),
     ])

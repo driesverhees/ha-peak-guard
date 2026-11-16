@@ -41,6 +41,7 @@ class PeakPIController:
         minimum_on_time_s: float = 120.0,
         minimum_off_time_s: float = 120.0,
         filter_time_s: float = 5.0,
+        anti_windup_time_s: float = 15.0,
         max_discharge_w: float = 2500.0,
         min_soc: float = 20.0,
     ) -> None:
@@ -52,6 +53,9 @@ class PeakPIController:
         self.minimum_on_time_s = max(0.0, float(minimum_on_time_s))
         self.minimum_off_time_s = max(0.0, float(minimum_off_time_s))
         self.filter_time_s = max(0.0, float(filter_time_s))
+        # Back-calculation tracking time constant. Smaller values unwind
+        # the integrator faster when power/ramp limits constrain the output.
+        self.anti_windup_time_s = max(1.0, float(anti_windup_time_s))
         self.max_discharge_w = max(0.0, float(max_discharge_w))
         self.min_soc = float(min_soc)
 
@@ -168,27 +172,24 @@ class PeakPIController:
                 self.status = "waiting_for_threshold"
                 return 0.0
 
+        # Unconstrained PI output (before power and ramp limits).
         raw_output = self.kp * self.error_w + self.integral_w
-        desired = self._clamp(raw_output, 0.0, power_limit)
         self.raw_output_w = raw_output
 
-        # Conditional integration anti-windup. Integrate when unsaturated, or
-        # when the error would move a saturated output back into range.
-        can_integrate = (
-            0.0 < raw_output < power_limit
-            or (raw_output >= power_limit and self.error_w < 0.0)
-            or (raw_output <= 0.0 and self.error_w > 0.0)
-        )
-        if can_integrate:
-            self.integral_w += self.ki * self.error_w * dt
-
-        # Recalculate after integration, then limit the rate of change.
-        desired = self._clamp(
-            self.kp * self.error_w + self.integral_w,
-            0.0,
-            power_limit,
-        )
+        # Apply both actuator constraints. The ramp-limited setpoint is the
+        # achievable command for this update and is used by back-calculation.
+        desired = self._clamp(raw_output, 0.0, power_limit)
         new_power = self._apply_ramp(desired, dt)
+
+        # Back-calculation anti-windup:
+        #   dI/dt = Ki * error + (u_limited - u_raw) / Tt
+        # This corrects the integral for both power saturation and ramp
+        # limiting, rather than only freezing integration at power limits.
+        tracking_error = new_power - raw_output
+        self.integral_w += (
+            self.ki * self.error_w
+            + tracking_error / self.anti_windup_time_s
+        ) * dt
 
         on_time_elapsed = (
             self.last_switch_ts is None
