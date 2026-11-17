@@ -538,8 +538,7 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         virtual_anker_operating_mode = (
             "self_consumption"
-            if battery_soc > self.controller_settings["max_charge_soc"]
-            or setpoint_w == 0.0
+            if battery_soc >= self.controller_settings["max_charge_soc"]
             else "third_party_control"
         )
         virtual_anker_power_w = (

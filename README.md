@@ -187,7 +187,7 @@ ranges are shown below.
 | Export Safety Margin | 150 W | 0–1000 W / 10 | Consumption margin retained when calculating safe discharge. |
 | Maximum Grid Charge Power | Battery maximum charging power | 0–20000 W / 100 | Additional cap for grid charging only; the effective grid limit is the lower of this value and the battery maximum configured above. |
 | Grid Charging SoC Limit | 60% | 0–100% / 1 | Grid charging is not selected at or above this SoC. |
-| Maximum Charging SoC | 80% | 0–100% / 1 | Solar charging is not selected at or above this SoC. |
+| Maximum Charging SoC | 80% | 0–100% / 1 | Controlled charging is not selected at or above this SoC. |
 | Switch SOC threshold | 20% | 0–100% / 1 | Legacy setting entity; currently not used by the active PI/mode-selection logic. |
 
 Controller settings are persisted in the Home Assistant config entry. The
