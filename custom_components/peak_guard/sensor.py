@@ -57,6 +57,30 @@ async def async_setup_entry(hass, entry, async_add_entities):
         ),
         CapacitySensor(
             coordinator,
+            "operating_mode",
+            "Battery Operating Mode",
+            None,
+        ),
+        CapacitySensor(
+            coordinator,
+            "operating_mode_reason",
+            "Battery Operating Mode Reason",
+            None,
+        ),
+        CapacitySensor(
+            coordinator,
+            "available_solar_surplus_w",
+            "Available Solar Surplus",
+            "W",
+        ),
+        CapacitySensor(
+            coordinator,
+            "available_peak_headroom_w",
+            "Available Peak Charging Headroom",
+            "W",
+        ),
+        CapacitySensor(
+            coordinator,
             "monthly_peak_kw",
             "Monthly Peak",
             "kW",

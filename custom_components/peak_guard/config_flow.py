@@ -30,7 +30,7 @@ class CapacityOptimizerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ),
                 vol.Required(
                     "battery_power_sensor",
-                    default=defaults.get("battery_power_sensor"),
+                    default=defaults.get("battery_power_sensor", "sensor.paulette_batterijvermogen"),
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
@@ -49,6 +49,18 @@ class CapacityOptimizerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(
                     "max_discharge_w",
                     default=defaults.get("max_discharge_w", 2500),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0,
+                        max=20000,
+                        step=100,
+                        unit_of_measurement="W",
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
+                vol.Required(
+                    "max_charge_w",
+                    default=defaults.get("max_charge_w", 2500),
                 ): selector.NumberSelector(
                     selector.NumberSelectorConfig(
                         min=0,

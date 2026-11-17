@@ -39,4 +39,5 @@ async def async_setup_entry(hass : HomeAssistant, entry : ConfigEntry, async_add
         PeakGuardBinarySensor(coordinator, "control_data_valid", "Control Data Valid", "mdi:check-circle"), #"Flag indicating whether the data used by the control algorithm is sufficiently reliable to make control decisions", 
         PeakGuardBinarySensor(coordinator, "battery_setpoint_w", "Discharge Required", "mdi:battery-arrow-down"),
         PeakGuardBinarySensor(coordinator, "controller_active", "PI Controller Active", "mdi:chart-bell-curve"),
+        PeakGuardBinarySensor(coordinator, "grid_charging_blocked", "Grid Charging Blocked This Quarter", "mdi:lock-clock"),
     ])

@@ -16,6 +16,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .peak_manager import PeakManager
+from .mode_manager import BatteryModeManager
 from .const import (
     DEFAULT_PI_KP,
     DEFAULT_PI_KI,
@@ -27,6 +28,13 @@ from .const import (
     DEFAULT_FILTER_TIME_S,
     DEFAULT_ANTI_WINDUP_TIME_S,
     DEFAULT_EXPORT_SAFETY_MARGIN_W,
+    DEFAULT_MAX_CHARGE_W,
+    DEFAULT_GRID_CHARGE_SOC_LIMIT,
+    DEFAULT_MAX_CHARGE_SOC,
+    DEFAULT_GRID_CHARGE_MARGIN_W,
+    DEFAULT_MIN_GRID_CHARGE_HEADROOM_W,
+    DEFAULT_SOLAR_SURPLUS_MARGIN_W,
+    DEFAULT_MIN_SOLAR_SURPLUS_W,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -36,7 +44,8 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Collect grid/battery measurements and calculate a peak-shaving target.
 
     This coordinator is deliberately dry-run only: it calculates and exposes
-    a battery discharge setpoint but does not write to the battery.
+    signed battery power setpoints (positive discharge, negative charge) but
+    does not write commands to the battery.
     """
 
     STORAGE_KEY = "peak_guard_runtime_state"
@@ -64,6 +73,8 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             f"{self.STORAGE_KEY}_{self.entry_id}",
         )
         self.peak_manager = PeakManager()
+        self.mode_manager = BatteryModeManager()
+        self._last_control_update_ts: float | None = None
 
         self.target_peak_kw = float(config.get("target_peak_kw", 3.5))
         self.max_discharge_w = float(config.get("max_discharge_w", 2500))
@@ -96,6 +107,13 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )),
             "export_safety_margin_w": float(config.get(
                 "export_safety_margin_w", DEFAULT_EXPORT_SAFETY_MARGIN_W
+            )),
+            "max_charge_w": float(config.get("max_charge_w", DEFAULT_MAX_CHARGE_W)),
+            "grid_charge_soc_limit": float(config.get(
+                "grid_charge_soc_limit", DEFAULT_GRID_CHARGE_SOC_LIMIT
+            )),
+            "max_charge_soc": float(config.get(
+                "max_charge_soc", DEFAULT_MAX_CHARGE_SOC
             )),
         }
         self.battery_power_sensor = config.get("battery_power_sensor")
@@ -298,6 +316,7 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if "peak_manager" in saved:
                 self.peak_manager = PeakManager.from_dict(saved["peak_manager"])
                 self.controller.restore_state(saved.get("controller"))
+                self.mode_manager.restore_state(saved.get("mode_manager"))
             else:
                 self.peak_manager = PeakManager.from_dict(saved)
         except Exception:
@@ -316,6 +335,7 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self.store.async_save({
                 "peak_manager": self.peak_manager.to_dict(),
                 "controller": self.controller.to_dict(),
+                "mode_manager": self.mode_manager.to_dict(),
             })
         except Exception:
             _LOGGER.exception("PeakPilot could not save runtime state")
@@ -354,6 +374,25 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         elif unit not in ("w", "watt", "watts"):
             raise ValueError(f"Unsupported power unit: {unit}")
         return value
+
+    def _ramp_charge_setpoint(self, desired_w: float, now: datetime) -> float:
+        """Ramp charge power up; reduce charging immediately when needed."""
+        now_ts = now.timestamp()
+        if self._last_control_update_ts is None:
+            dt = 5.0
+        else:
+            dt = max(0.1, min(10.0, now_ts - self._last_control_update_ts))
+
+        previous = self.mode_manager.last_charge_setpoint_w
+        if desired_w < previous:
+            # Increasing charge magnitude is ramp limited.
+            max_change = self.controller_settings["ramp_rate_w_per_s"] * dt
+            result = max(desired_w, previous - max_change)
+        else:
+            # Reduce charge immediately if solar surplus/headroom disappears.
+            result = desired_w
+        self.mode_manager.last_charge_setpoint_w = result
+        return result
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Read current Home Assistant states and update the peak manager."""
@@ -407,15 +446,79 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         remaining_power_w = self._calculate_remaining_power_w(status)
 
         if status["control_data_valid"] and remaining_power_w is not None:
-            setpoint_w = self.controller.update(
+            discharge_setpoint_w = self.controller.update(
                 grid_power_w=grid_power_w,
                 allowed_grid_power_w=remaining_power_w,
                 battery_soc=battery_soc,
                 now=now,
                 max_discharge_w=min(self.max_discharge_w, export_safe_max_w),
+                # A genuine peak excursion must be able to start discharge
+                # immediately, regardless of the normal minimum-off timer.
+                # This also lets an unexpected load interrupt either charge mode.
+                force_activation=(
+                    self.mode_manager.mode in ("grid_charge", "solar_charge")
+                    or grid_power_w - remaining_power_w
+                    >= self.controller.activation_threshold_w
+                ),
             )
+
+            # Positive battery power is discharge; negative is charge.
+            # Estimate PV surplus from net grid power plus measured battery
+            # discharge (negative measured battery power means charging).
+            solar_surplus_w = max(0.0, -(grid_power_w + battery_power_w))
+            grid_charge_margin_w = DEFAULT_GRID_CHARGE_MARGIN_W
+            available_peak_headroom_w = max(
+                0.0,
+                remaining_power_w - grid_power_w - grid_charge_margin_w,
+            )
+
+            discharge_required = (
+                self.controller.is_active
+                or discharge_setpoint_w > 0.0
+                or self.controller.error_w >= self.controller.activation_threshold_w
+            )
+            mode, mode_reason = self.mode_manager.select_mode(
+                interval_id=int(now.timestamp() // 900),
+                discharge_required=discharge_required,
+                discharge_active=(self.controller.is_active or discharge_setpoint_w > 0.0),
+                battery_soc=battery_soc,
+                grid_charge_soc_limit=self.controller_settings["grid_charge_soc_limit"],
+                max_charge_soc=self.controller_settings["max_charge_soc"],
+                solar_surplus_w=solar_surplus_w,
+                available_peak_headroom_w=available_peak_headroom_w,
+                minimum_solar_surplus_w=DEFAULT_MIN_SOLAR_SURPLUS_W,
+                minimum_grid_charge_headroom_w=DEFAULT_MIN_GRID_CHARGE_HEADROOM_W,
+            )
+
+            if mode == "discharge":
+                setpoint_w = discharge_setpoint_w
+                self.mode_manager.last_charge_setpoint_w = 0.0
+            elif mode == "solar_charge":
+                charge_power_w = min(
+                    self.controller_settings["max_charge_w"],
+                    max(0.0, solar_surplus_w - DEFAULT_SOLAR_SURPLUS_MARGIN_W),
+                )
+                setpoint_w = self._ramp_charge_setpoint(-charge_power_w, now)
+            elif mode == "grid_charge":
+                charge_power_w = min(
+                    self.controller_settings["max_charge_w"],
+                    max(0.0, available_peak_headroom_w),
+                )
+                setpoint_w = self._ramp_charge_setpoint(-charge_power_w, now)
+            else:
+                setpoint_w = 0.0
+                self.mode_manager.last_charge_setpoint_w = 0.0
+
+            self._last_control_update_ts = now.timestamp()
         else:
             setpoint_w = self.controller.inhibit()
+            self.mode_manager.mode = "idle"
+            self.mode_manager.reason = "control_data_invalid"
+            self.mode_manager.last_charge_setpoint_w = 0.0
+            solar_surplus_w = None
+            available_peak_headroom_w = None
+            mode = "idle"
+            mode_reason = "control_data_invalid"
 
         await self.async_save_runtime_state()
 
@@ -435,6 +538,12 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "export_safe_max_discharge_w": export_safe_max_w,
             "export_safety_margin_w": export_margin_w,
             "battery_setpoint_w": setpoint_w,
+            "operating_mode": mode,
+            "operating_mode_reason": mode_reason,
+            "grid_charging_blocked": self.mode_manager.discharge_started_this_block,
+            "available_solar_surplus_w": solar_surplus_w,
+            "available_peak_headroom_w": available_peak_headroom_w,
+            "grid_charge_soc_limit": self.controller_settings["grid_charge_soc_limit"],
             "remaining_power_w": remaining_power_w,
             "allowed_grid_power_w": remaining_power_w,
             "predicted_peak_kw": predicted_peak_kw,

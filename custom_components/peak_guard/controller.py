@@ -124,6 +124,7 @@ class PeakPIController:
         battery_soc: float,
         now: datetime | float,
         max_discharge_w: float | None = None,
+        force_activation: bool = False,
     ) -> float:
         """Calculate a smoothed discharge setpoint in watts."""
         now_ts = self._timestamp(now)
@@ -135,7 +136,12 @@ class PeakPIController:
 
         interval_id = int(now_ts // 900)
         filtered_grid = self._filter_grid_power(float(grid_power_w), dt)
+        raw_error_w = float(grid_power_w) - float(allowed_grid_power_w)
         self.error_w = filtered_grid - float(allowed_grid_power_w)
+        # Do not let the low-pass filter delay peak protection during a sudden
+        # load step. Use the raw measurement for positive peak excursions.
+        if raw_error_w >= self.activation_threshold_w:
+            self.error_w = raw_error_w
         self._handle_interval_change(interval_id, self.error_w)
 
         power_limit = self.max_discharge_w
@@ -158,7 +164,9 @@ class PeakPIController:
                 self.last_switch_ts is None
                 or now_ts - self.last_switch_ts >= self.minimum_off_time_s
             )
-            if self.error_w >= self.activation_threshold_w and off_time_elapsed:
+            if self.error_w >= self.activation_threshold_w and (
+                off_time_elapsed or force_activation
+            ):
                 self.is_active = True
                 self.last_switch_ts = now_ts
                 # Start without a discontinuous integral kick.

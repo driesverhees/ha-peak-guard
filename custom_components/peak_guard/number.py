@@ -120,4 +120,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         ControllerSettingNumber(coordinator, "filter_time_s", "Grid Power Filter Time", 0, 60, 1, "s"),
         ControllerSettingNumber(coordinator, "anti_windup_time_s", "PI Anti-windup Tracking Time", 1, 120, 1, "s"),
         ControllerSettingNumber(coordinator, "export_safety_margin_w", "Export Safety Margin", 0, 1000, 10, "W"),
+        ControllerSettingNumber(coordinator, "max_charge_w", "Maximum Battery Charge Power", 0, 20000, 100, "W"),
+        ControllerSettingNumber(coordinator, "grid_charge_soc_limit", "Grid Charging SoC Limit", 0, 100, 1, "%"),
+        ControllerSettingNumber(coordinator, "max_charge_soc", "Maximum Charging SoC", 0, 100, 1, "%"),
     ])
