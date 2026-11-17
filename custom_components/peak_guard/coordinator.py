@@ -536,6 +536,24 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             mode = "idle"
             mode_reason = "control_data_invalid"
 
+        virtual_anker_operating_mode = (
+            "self_consumption"
+            if battery_soc > self.controller_settings["max_charge_soc"]
+            or setpoint_w == 0.0
+            else "third_party_control"
+        )
+        virtual_anker_power_w = (
+            int(round(abs(setpoint_w)))
+            if virtual_anker_operating_mode == "third_party_control"
+            else 0
+        )
+        virtual_anker_grid_flow = (
+            "discharge"
+            if virtual_anker_operating_mode == "third_party_control"
+            and setpoint_w > 0.0
+            else "charge"
+        )
+
         await self.async_save_runtime_state()
 
         predicted_peak_kw = None
@@ -557,6 +575,9 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "discharge_required": discharge_required,
             "operating_mode": mode,
             "operating_mode_reason": mode_reason,
+            "virtual_anker_operating_mode": virtual_anker_operating_mode,
+            "virtual_anker_grid_flow": virtual_anker_grid_flow,
+            "virtual_anker_power_w": virtual_anker_power_w,
             "grid_charging_blocked": self.mode_manager.discharge_started_this_block,
             "available_solar_surplus_w": solar_surplus_w,
             "available_peak_headroom_w": available_peak_headroom_w,

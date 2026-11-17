@@ -152,6 +152,21 @@ Sensors can be unavailable if their required input measurements are unavailable.
 The binary sensors can also be unavailable when the coordinator has no current
 data.
 
+## Virtual Anker device
+
+PeakPilot also exposes three read-only sensors grouped as a separate
+**Anker SOLIX Solarbank Max AC** virtual device. Their enum states match the
+official integration's control values:
+
+| Sensor | Values / unit | Behavior |
+| --- | --- | --- |
+| Operating Mode | `self_consumption`, `third_party_control` | Uses `self_consumption` when SoC is above **Maximum Charging SoC**, or when PeakGuard's setpoint is zero. Otherwise uses `third_party_control`. |
+| Grid Power | `charge`, `discharge` | Mirrors the direction of PeakGuard's signed setpoint while in third-party-control mode; otherwise `charge`. |
+| Power | W | Absolute PeakGuard setpoint in third-party-control mode; otherwise 0 W. |
+
+This virtual device reports controller state only; it does not communicate
+with or control an Anker battery.
+
 ## Runtime configuration numbers
 
 These number entities can be changed in Home Assistant. Defaults and allowed

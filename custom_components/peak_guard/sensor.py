@@ -1,5 +1,10 @@
 from custom_components.peak_guard.coordinator import CapacityCoordinator
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
+from homeassistant.helpers.device_registry import DeviceInfo
 
 from .const import DOMAIN
 from .entity import PeakGuardEntity
@@ -13,6 +18,42 @@ class CapacitySensor(PeakGuardEntity, SensorEntity):
         self._attr_unique_id = f"capacity_optimizer_{key}"
         self._attr_native_unit_of_measurement = unit
         self._attr_native_value = None
+
+    @property
+    def native_value(self):
+        if not self.coordinator.data.get("available"):
+            return None
+        return self.coordinator.data.get(self._key)
+
+
+class VirtualAnkerSensor(PeakGuardEntity, SensorEntity):
+    """Read-only Anker-compatible status sensor on a separate virtual device."""
+
+    def __init__(
+        self,
+        coordinator: CapacityCoordinator,
+        key: str,
+        name: str,
+        *,
+        options: list[str] | None = None,
+    ) -> None:
+        super().__init__(coordinator, coordinator.config_entry)
+        self._key = key
+        self._attr_name = name
+        self._attr_unique_id = f"{coordinator.entry_id}_virtual_anker_{key}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{coordinator.entry_id}_virtual_anker")},
+            name="Anker SOLIX Solarbank Max AC",
+            manufacturer="Anker",
+            model="Solarbank Max AC",
+        )
+        if options is not None:
+            self._attr_device_class = SensorDeviceClass.ENUM
+            self._attr_options = options
+        else:
+            self._attr_native_unit_of_measurement = "W"
+            self._attr_device_class = SensorDeviceClass.POWER
+            self._attr_state_class = SensorStateClass.MEASUREMENT
 
     @property
     def native_value(self):
@@ -138,5 +179,22 @@ async def async_setup_entry(hass, entry, async_add_entities):
             "controller_status",
             "Controller Status",
             None,
+        ),
+        VirtualAnkerSensor(
+            coordinator,
+            "virtual_anker_operating_mode",
+            "Operating Mode",
+            options=["self_consumption", "third_party_control"],
+        ),
+        VirtualAnkerSensor(
+            coordinator,
+            "virtual_anker_grid_flow",
+            "Grid Power",
+            options=["charge", "discharge"],
+        ),
+        VirtualAnkerSensor(
+            coordinator,
+            "virtual_anker_power_w",
+            "Power",
         ),
     ])
