@@ -39,35 +39,6 @@ class TargetPeakNumber(PeakGuardEntity, NumberEntity):
             )
         await self.coordinator.async_set_target_peak_kw(value)
 
-class SwitchSocThresholdNumber(PeakGuardEntity, NumberEntity):
-    """Expose the switch SOC threshold as a configurable number."""
-
-    _attr_has_entity_name = True
-    _attr_name = "Switch SOC threshold"
-    _attr_native_min_value = 0
-    _attr_native_max_value = 100
-    _attr_native_step = 1
-    _attr_native_unit_of_measurement = "%"
-    _attr_mode = NumberMode.SLIDER
-    _attr_entity_category = EntityCategory.CONFIG
-
-    def __init__(self, coordinator: CapacityCoordinator) -> None:
-        super().__init__(coordinator, coordinator.config_entry)
-        self._attr_unique_id = f"{coordinator.entry_id}_switch_soc_threshold"
-
-    @property
-    def native_value(self) -> float:
-        return self.coordinator.switch_soc_threshold
-
-    async def async_set_native_value(self, value: float) -> None:
-        if not self._attr_native_min_value <= value <= self._attr_native_max_value:
-            raise ValueError(
-                f"Switch SOC must be between {self._attr_native_min_value} "
-                f"and {self._attr_native_max_value} %"
-            )
-        await self.coordinator.async_set_switch_soc_threshold(value)
-
-
 class ControllerSettingNumber(PeakGuardEntity, NumberEntity):
     """Expose a PI-controller tuning parameter."""
 
@@ -112,7 +83,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     coordinator : CapacityCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([
         TargetPeakNumber(coordinator),
-        SwitchSocThresholdNumber(coordinator),
         ControllerSettingNumber(coordinator, "pi_kp", "PI Proportional Gain", 0, 5, 0.05),
         ControllerSettingNumber(coordinator, "pi_ki", "PI Integral Gain", 0, 0.2, 0.001),
         ControllerSettingNumber(coordinator, "activation_threshold_w", "Battery Activation Threshold", 0, 5000, 50, "W"),

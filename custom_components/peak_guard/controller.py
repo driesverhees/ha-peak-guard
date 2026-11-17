@@ -11,17 +11,6 @@ from datetime import datetime
 from typing import Any
 
 
-@dataclass
-class ControllerResult:
-    """Result structure retained for the legacy controller."""
-
-    SelfConsumptionActive: bool = False
-    PeakShavingActive: bool = False
-    ForceGridChargingActive: bool = False
-    DischargeSetpointW: float = 0.0
-    ChargeSetpointW: float = 0.0
-
-
 class PeakPIController:
     """PI controller using the remaining quarter-hour energy budget.
 
@@ -250,71 +239,3 @@ class PeakPIController:
         self.interval_id = data.get("interval_id")
         self.is_active = bool(data.get("is_active", False))
         self.last_update_ts = None
-
-
-class PeakShavingController:
-    """Legacy instantaneous controller retained for backwards compatibility."""
-
-    def __init__(
-        self,
-        grid_power_w: float,
-        imported_energy_kwh: float,
-        remaining_seconds: float,
-        target_peak_kw: float,
-        max_discharge_w: float,
-        max_charge_w: float,
-        max_grid_charge_w: float,
-        min_soc: float,
-        switch_soc: float,
-        grid_charging_soc: float,
-        battery_soc: float,
-    ) -> None:
-        self.grid_power_w = grid_power_w
-        self.imported_energy_kwh = imported_energy_kwh
-        self.remaining_seconds = remaining_seconds
-        self.target_peak_kw = target_peak_kw
-        self.max_discharge_w = max_discharge_w
-        self.max_charge_w = max_charge_w
-        self.max_grid_charge_w = max_grid_charge_w
-        self.min_soc = min_soc
-        self.switch_soc = switch_soc
-        self.grid_charging_soc = grid_charging_soc
-        self.battery_soc = battery_soc
-
-    def calculate_discharge_setpoint(self) -> float:
-        if self.battery_soc <= self.min_soc or self.remaining_seconds <= 0:
-            return 0.0
-        max_energy_kwh = self.target_peak_kw * 0.25
-        remaining_energy = max(0.0, max_energy_kwh - self.imported_energy_kwh)
-        allowed_grid_power_w = remaining_energy * 3_600_000.0 / self.remaining_seconds
-        required_power_w = max(0.0, self.grid_power_w - allowed_grid_power_w)
-        return min(required_power_w, self.max_discharge_w)
-
-    def calculate_charge_setpoint(self, allow_grid_charging: bool = False) -> float:
-        if self.remaining_seconds <= 0:
-            return 0.0
-        max_energy_kwh = self.target_peak_kw * 0.25
-        remaining_energy = max(0.0, max_energy_kwh - self.imported_energy_kwh)
-        if allow_grid_charging:
-            allowed_grid_power_w = min(
-                remaining_energy * 3_600_000.0 / self.remaining_seconds,
-                self.max_grid_charge_w,
-            )
-            return min(max(0.0, allowed_grid_power_w - self.grid_power_w), self.max_charge_w)
-        if self.grid_power_w < 0:
-            return min(-self.grid_power_w, self.max_charge_w)
-        return 0.0
-
-    def run(self) -> ControllerResult:
-        result = ControllerResult()
-        if self.battery_soc >= self.switch_soc:
-            result.SelfConsumptionActive = True
-        else:
-            if self.battery_soc < self.grid_charging_soc:
-                result.ForceGridChargingActive = True
-            result.PeakShavingActive = True
-        result.DischargeSetpointW = self.calculate_discharge_setpoint()
-        result.ChargeSetpointW = self.calculate_charge_setpoint(
-            allow_grid_charging=result.ForceGridChargingActive
-        )
-        return result
