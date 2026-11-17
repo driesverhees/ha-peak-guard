@@ -1,46 +1,178 @@
 # ha-peak-guard
 
-# PI anti-windup implementation
+PeakPilot calculates battery power setpoints to help keep grid import within a
+configurable quarter-hour peak target. It exposes measurements, controller
+status, and signed setpoints in Home Assistant. **It does not send commands to
+the battery**; use the setpoint sensors in your own automation if you want to
+control an inverter.
 
-PeakPIController uses back-calculation anti-windup.
+## Control methodology
 
-The unconstrained PI output is calculated first. The output is then
-constrained by the battery discharge limit and the ramp-rate limiter.
-The integrator is updated using:
+### Quarter-hour energy budget
 
-    dI/dt = Ki * error + (limited_setpoint - raw_PI_output) / Tt
+Grid power is sampled every five seconds. Positive grid power means import;
+negative means export. The integration accumulates only imported energy in each
+15-minute interval. Samples are linearly interpolated, including when power
+crosses between import and export.
 
-`limited_setpoint` includes both the power saturation and ramp limit.
-`Tt` is configurable in Home Assistant as **PI Anti-windup Tracking Time**.
-The default is 15 seconds.
+The target peak in kW corresponds to an interval energy budget of
+`target_peak_kW × 0.25` kWh. At each update, the remaining budget and time in
+the interval give the maximum average grid power still allowed:
 
-A smaller tracking time unwinds the integral more aggressively; a larger
-value makes the correction slower. Start at 15 seconds and tune only after
-observing `pi_raw_output_w`, `pi_integral_w`, and `battery_setpoint_w`.
+`allowed_grid_power_W = remaining_energy_kWh × 3,600,000 / remaining_seconds`
 
-Note: the limited output here is the achievable commanded setpoint, not
-measured physical battery power. The controller does not currently receive
-battery discharge power feedback.
+The controller compares measured grid power with this allowed power. This
+remaining-power limit changes through the interval as energy is imported and
+time runs out.
 
-# Export prevention
+An interval is usable for control only when its measurement coverage is
+sufficient and no sample gap exceeds 30 seconds. Incomplete or stale interval
+data inhibits control rather than being treated as zero import. At startup, the
+integration attempts to restore interval data from saved state or Home
+Assistant Recorder history. Only fully covered intervals contribute to the
+monthly peak.
 
-PeakPilot requires a configurable battery-power sensor in the integration setup.
-The sign convention is configurable too:
+### PI peak-shaving controller
 
-- **Positive = discharging** (default)
-- **Positive = charging**
+The controller uses a proportional-integral (PI) calculation. Its error is
+grid power minus allowed remaining grid power. A low-pass filter smooths the
+error, but a large positive excursion uses the current raw measurement so the
+filter does not delay peak protection.
 
-Power sensors with units W or kW are converted to watts.
+The raw PI output is a non-negative discharge request. It is constrained by
+the battery's configured maximum discharge power, a minimum state-of-charge
+(SoC) reserve, a ramp-rate limit, and the export-safety limit below. Activation
+and deactivation thresholds, minimum on/off times, and the filter help avoid
+unnecessary switching and rapid setpoint changes.
 
-The export-safe maximum discharge is calculated as:
+The integrator uses back-calculation anti-windup:
 
-`max(0, grid_import_w + measured_battery_discharge_w - export_safety_margin_w)`
+`dI/dt = Ki × error + (limited_setpoint - raw_PI_output) / Tt`
 
-Grid import and battery discharge are positive. The configurable export safety
-margin defaults to 150 W and is available as a Home Assistant number entity.
-The limit is applied after the normal ramp limiter, so it can force an immediate
-setpoint reduction when the safe discharge ceiling drops. Back-calculation uses
-that final constrained setpoint.
+The correction tracks the final achievable setpoint, including power and ramp
+constraints. **PI Anti-windup Tracking Time** (`Tt`) defaults to 15 seconds.
+A smaller value unwinds the integral more quickly when constrained; a larger
+value makes the correction slower. The controller does not use measured
+battery output as PI feedback: anti-windup tracks the commanded setpoint.
 
-If the battery-power sensor is missing, unavailable, or has an unsupported unit,
-PeakPilot inhibits the controller rather than assuming additional discharge is safe.
+### Export prevention
+
+The configured battery-power sensor is normalized to the controller's sign
+convention: positive means battery discharge; negative means battery charging.
+Power sensors with units W or kW are supported. The export-safe maximum
+discharge is:
+
+`max(0, grid_import_W + measured_battery_discharge_W - export_safety_margin_W)`
+
+This estimates household consumption from grid power and measured battery
+discharge, then leaves the configured safety margin. The limit is a hard
+ceiling: it can reduce the discharge setpoint immediately, even when that
+exceeds the normal ramp-down rate. The default margin is 150 W.
+
+If a required sensor is missing, unavailable, invalid, or has an unsupported
+unit, the integration reports unavailable data and inhibits control; it does
+not assume it is safe to discharge.
+
+### Charging modes
+
+When discharge is not required, the mode manager can select:
+
+- **Solar charge:** when estimated solar surplus is at least 200 W and SoC is
+  below the maximum charging SoC. Charging power is limited by the maximum
+  charge power and uses a 100 W surplus reserve.
+- **Grid charge:** when SoC is below the grid-charging SoC limit, at least
+  500 W of peak headroom remains after a 200 W grid-charge margin, and
+  discharge has not already started in the current quarter-hour.
+- **Idle:** when neither charging mode is eligible.
+
+Solar surplus is estimated from grid power plus measured battery discharge.
+Charging setpoints are negative; discharging setpoints are positive. Charging
+power increases are ramp-limited, while a reduction in charging is applied
+immediately if surplus or headroom falls. Once discharge actually starts,
+grid charging remains blocked until the next quarter-hour. Solar charging can
+still be selected after discharge if its conditions are met.
+
+## Home Assistant setup
+
+The integration setup/reconfigure flow asks for:
+
+| Input | Meaning | Default |
+| --- | --- | --- |
+| Grid power sensor | Grid power in W or kW; positive is import and negative is export. | Required |
+| Battery SoC sensor | Battery state of charge in percent. | Required |
+| Battery power sensor | Battery power in W or kW, used for export prevention and surplus estimation. | Required |
+| Battery power sign | Choose whether the source sensor reports positive power while discharging or charging. | Positive = discharging |
+| Maximum discharge power | Upper limit for the peak-shaving discharge request, in W. | 2500 W |
+| Maximum charge power | Upper limit for solar/grid charging, in W. | 2500 W |
+| Minimum SoC | Hard lower limit for discharging, in percent. | 20% |
+
+Set the battery-power sign to match the source sensor. For example, if the
+sensor is positive while charging, choose **Positive = charging**. Internally,
+the integration always uses positive = discharging and negative = charging.
+
+## Home Assistant entities
+
+### Sensors
+
+| Entity | Unit | Meaning |
+| --- | --- | --- |
+| Grid Power | W | Latest measured grid power; positive import, negative export. |
+| Battery SOC | % | Latest battery state of charge. |
+| Measured Battery Power | W | Battery power normalized to positive = discharging. |
+| Export-safe Maximum Discharge | W | Current hard ceiling on battery discharge. |
+| Battery Setpoint | W | Signed calculated setpoint; positive = discharge, negative = charge. |
+| Battery Operating Mode | — | `discharge`, `solar_charge`, `grid_charge`, or `idle`. |
+| Battery Operating Mode Reason | — | Machine-readable reason for the selected mode. |
+| Available Solar Surplus | W | Estimated solar surplus available for charging. |
+| Available Peak Charging Headroom | W | Remaining grid-power headroom available to grid charging. |
+| Monthly Peak | kW | Highest fully covered quarter-hour average import recorded for the month. |
+| Quarter-hour Imported Energy | kWh | Imported energy accumulated in the current 15-minute interval. |
+| Quarter-hour Remaining Time | s | Time remaining in the current interval. |
+| Quarter-hour Remaining Power | W | Maximum average grid power allowed for the rest of the interval. |
+| Allowed Remaining Grid Power | W | Same remaining-power limit, exposed under an alternate name. |
+| Uncontrolled Projected Quarter-hour Peak | kW | Projection if the current positive grid import continued for the remaining interval, without battery peak shaving. |
+| PI Controller Error | W | Filtered grid-power error relative to the remaining-power limit, with immediate raw response to large positive excursions. |
+| PI Integral Contribution | W | Integral term in the PI output. |
+| PI Unconstrained Output | W | PI output before discharge, export, and ramp limits. |
+| Controller Status | — | Controller status such as `discharging`, `idle`, or a limiting/waiting status. |
+
+### Binary sensors
+
+| Entity | Meaning |
+| --- | --- |
+| Control Data Valid | Whether current interval data is sufficiently complete and current for control. |
+| Discharge Required | Whether the controller is requesting peak-protection discharge; this is not derived from the signed setpoint. |
+| PI Controller Active | Whether the PI controller's discharge state is active. |
+| Grid Charging Blocked This Quarter | Whether a discharge has started in this quarter-hour and grid charging is therefore blocked. |
+
+Sensors can be unavailable if their required input measurements are unavailable.
+The binary sensors can also be unavailable when the coordinator has no current
+data.
+
+## Runtime configuration numbers
+
+These number entities can be changed in Home Assistant. Defaults and allowed
+ranges are shown below.
+
+| Entity | Default | Range / step | Purpose |
+| --- | ---: | --- | --- |
+| Target Peak | 3.5 kW | 0.1–20 kW / 0.1 | Quarter-hour peak target. |
+| PI Proportional Gain | 0.5 | 0–5 / 0.05 | Proportional response to peak error. |
+| PI Integral Gain | 0.01 | 0–0.2 / 0.001 | Integral response to sustained peak error. |
+| Battery Activation Threshold | 300 W | 0–5000 W / 50 | Error needed to activate discharge; a charging-mode interruption or immediate peak excursion can bypass the normal minimum-off delay. |
+| Battery Deactivation Threshold | 100 W | 0–3000 W / 50 | Negative error threshold used when considering discharge deactivation. |
+| Battery Power Ramp Rate | 200 W/s | 1–5000 W/s / 25 | Limits normal changes in discharge and charge setpoints. |
+| Minimum Battery On Time | 120 s | 0–900 s / 10 | Minimum time before the controller may deactivate after starting. |
+| Minimum Battery Off Time | 120 s | 0–900 s / 10 | Normal delay before starting after stopping; urgent peak protection can force activation. |
+| Grid Power Filter Time | 5 s | 0–60 s / 1 | Smoothing time for grid power in the PI controller. |
+| PI Anti-windup Tracking Time | 15 s | 1–120 s / 1 | Back-calculation tracking time; smaller values correct integral windup faster. |
+| Export Safety Margin | 150 W | 0–1000 W / 10 | Consumption margin retained when calculating safe discharge. |
+| Maximum Battery Charge Power | 2500 W | 0–20000 W / 100 | Maximum solar or grid charging power. |
+| Grid Charging SoC Limit | 60% | 0–100% / 1 | Grid charging is not selected at or above this SoC. |
+| Maximum Charging SoC | 80% | 0–100% / 1 | Solar charging is not selected at or above this SoC. |
+| Switch SOC threshold | 20% | 0–100% / 1 | Legacy setting entity; currently not used by the active PI/mode-selection logic. |
+
+Controller settings are persisted in the Home Assistant config entry. The
+**Switch SOC threshold** is retained for compatibility but does not currently
+affect the active controller; use **Minimum SoC** in the integration
+configuration for the active discharge reserve.

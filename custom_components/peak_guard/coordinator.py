@@ -445,6 +445,7 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         remaining_power_w = self._calculate_remaining_power_w(status)
 
+        discharge_required = False
         if status["control_data_valid"] and remaining_power_w is not None:
             discharge_setpoint_w = self.controller.update(
                 grid_power_w=grid_power_w,
@@ -538,6 +539,7 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "export_safe_max_discharge_w": export_safe_max_w,
             "export_safety_margin_w": export_margin_w,
             "battery_setpoint_w": setpoint_w,
+            "discharge_required": discharge_required,
             "operating_mode": mode,
             "operating_mode_reason": mode_reason,
             "grid_charging_blocked": self.mode_manager.discharge_started_this_block,
