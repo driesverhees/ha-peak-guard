@@ -78,9 +78,21 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         self.target_peak_kw = float(config.get("target_peak_kw", 3.5))
         self.max_discharge_w = float(config.get("max_discharge_w", 2500))
+        self.battery_max_charge_w = float(
+            config_entry.data.get(
+                "battery_max_charge_w",
+                config_entry.data.get(
+                    "max_charge_w",
+                    config.get("max_charge_w", DEFAULT_MAX_CHARGE_W),
+                ),
+            )
+        )
         self.min_soc = float(config.get("min_soc", 20.0))
         self.switch_soc_threshold = float(config.get("switch_soc_threshold", 20.0))
 
+        legacy_grid_charge_w = config_entry.options.get(
+            "max_charge_w", self.battery_max_charge_w
+        )
         self.controller_settings = {
             "pi_kp": float(config.get("pi_kp", DEFAULT_PI_KP)),
             "pi_ki": float(config.get("pi_ki", DEFAULT_PI_KI)),
@@ -108,7 +120,9 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "export_safety_margin_w": float(config.get(
                 "export_safety_margin_w", DEFAULT_EXPORT_SAFETY_MARGIN_W
             )),
-            "max_charge_w": float(config.get("max_charge_w", DEFAULT_MAX_CHARGE_W)),
+            "max_grid_charge_w": float(
+                config.get("max_grid_charge_w", legacy_grid_charge_w)
+            ),
             "grid_charge_soc_limit": float(config.get(
                 "grid_charge_soc_limit", DEFAULT_GRID_CHARGE_SOC_LIMIT
             )),
@@ -496,13 +510,14 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.mode_manager.last_charge_setpoint_w = 0.0
             elif mode == "solar_charge":
                 charge_power_w = min(
-                    self.controller_settings["max_charge_w"],
+                    self.battery_max_charge_w,
                     max(0.0, solar_surplus_w - DEFAULT_SOLAR_SURPLUS_MARGIN_W),
                 )
                 setpoint_w = self._ramp_charge_setpoint(-charge_power_w, now)
             elif mode == "grid_charge":
                 charge_power_w = min(
-                    self.controller_settings["max_charge_w"],
+                    self.battery_max_charge_w,
+                    self.controller_settings["max_grid_charge_w"],
                     max(0.0, available_peak_headroom_w),
                 )
                 setpoint_w = self._ramp_charge_setpoint(-charge_power_w, now)

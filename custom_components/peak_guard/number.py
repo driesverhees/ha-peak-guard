@@ -80,11 +80,14 @@ class ControllerSettingNumber(PeakGuardEntity, NumberEntity):
         maximum: float,
         step: float,
         unit: str | None = None,
+        unique_id_key: str | None = None,
     ) -> None:
         super().__init__(coordinator, coordinator.config_entry)
         self._key = key
         self._attr_name = name
-        self._attr_unique_id = f"{coordinator.entry_id}_{key}"
+        self._attr_unique_id = (
+            f"{coordinator.entry_id}_{unique_id_key or key}"
+        )
         self._attr_native_min_value = minimum
         self._attr_native_max_value = maximum
         self._attr_native_step = step
@@ -120,7 +123,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         ControllerSettingNumber(coordinator, "filter_time_s", "Grid Power Filter Time", 0, 60, 1, "s"),
         ControllerSettingNumber(coordinator, "anti_windup_time_s", "PI Anti-windup Tracking Time", 1, 120, 1, "s"),
         ControllerSettingNumber(coordinator, "export_safety_margin_w", "Export Safety Margin", 0, 1000, 10, "W"),
-        ControllerSettingNumber(coordinator, "max_charge_w", "Maximum Battery Charge Power", 0, 20000, 100, "W"),
+        ControllerSettingNumber(
+            coordinator,
+            "max_grid_charge_w",
+            "Maximum Grid Charge Power",
+            0,
+            20000,
+            100,
+            "W",
+            unique_id_key="max_charge_w",
+        ),
         ControllerSettingNumber(coordinator, "grid_charge_soc_limit", "Grid Charging SoC Limit", 0, 100, 1, "%"),
         ControllerSettingNumber(coordinator, "max_charge_soc", "Maximum Charging SoC", 0, 100, 1, "%"),
     ])

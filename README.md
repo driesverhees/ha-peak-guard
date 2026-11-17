@@ -78,11 +78,14 @@ not assume it is safe to discharge.
 When discharge is not required, the mode manager can select:
 
 - **Solar charge:** when estimated solar surplus is at least 200 W and SoC is
-  below the maximum charging SoC. Charging power is limited by the maximum
-  charge power and uses a 100 W surplus reserve.
+  below the maximum charging SoC. Charging power is limited by the battery's
+  configured maximum charging power and uses a 100 W surplus reserve. The
+  grid-charging limit does not restrict solar charging.
 - **Grid charge:** when SoC is below the grid-charging SoC limit, at least
   500 W of peak headroom remains after a 200 W grid-charge margin, and
-  discharge has not already started in the current quarter-hour.
+  discharge has not already started in the current quarter-hour. Charging is
+  limited by both the battery's configured maximum and the separate
+  **Maximum Grid Charge Power** number; the lower limit applies.
 - **Idle:** when neither charging mode is eligible.
 
 Solar surplus is estimated from grid power plus measured battery discharge.
@@ -103,7 +106,7 @@ The integration setup/reconfigure flow asks for:
 | Battery power sensor | Battery power in W or kW, used for export prevention and surplus estimation. | Required |
 | Battery power sign | Choose whether the source sensor reports positive power while discharging or charging. | Positive = discharging |
 | Maximum discharge power | Upper limit for the peak-shaving discharge request, in W. | 2500 W |
-| Maximum charge power | Upper limit for solar/grid charging, in W. | 2500 W |
+| Battery maximum charging power | Hard upper limit for both solar and grid charging, in W. | 2500 W |
 | Minimum SoC | Hard lower limit for discharging, in percent. | 20% |
 
 Set the battery-power sign to match the source sensor. For example, if the
@@ -167,7 +170,7 @@ ranges are shown below.
 | Grid Power Filter Time | 5 s | 0–60 s / 1 | Smoothing time for grid power in the PI controller. |
 | PI Anti-windup Tracking Time | 15 s | 1–120 s / 1 | Back-calculation tracking time; smaller values correct integral windup faster. |
 | Export Safety Margin | 150 W | 0–1000 W / 10 | Consumption margin retained when calculating safe discharge. |
-| Maximum Battery Charge Power | 2500 W | 0–20000 W / 100 | Maximum solar or grid charging power. |
+| Maximum Grid Charge Power | Battery maximum charging power | 0–20000 W / 100 | Additional cap for grid charging only; the effective grid limit is the lower of this value and the battery maximum configured above. |
 | Grid Charging SoC Limit | 60% | 0–100% / 1 | Grid charging is not selected at or above this SoC. |
 | Maximum Charging SoC | 80% | 0–100% / 1 | Solar charging is not selected at or above this SoC. |
 | Switch SOC threshold | 20% | 0–100% / 1 | Legacy setting entity; currently not used by the active PI/mode-selection logic. |

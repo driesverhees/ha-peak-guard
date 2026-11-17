@@ -59,8 +59,11 @@ class CapacityOptimizerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     )
                 ),
                 vol.Required(
-                    "max_charge_w",
-                    default=defaults.get("max_charge_w", 2500),
+                    "battery_max_charge_w",
+                    default=defaults.get(
+                        "battery_max_charge_w",
+                        defaults.get("max_charge_w", 2500),
+                    ),
                 ): selector.NumberSelector(
                     selector.NumberSelectorConfig(
                         min=0,
