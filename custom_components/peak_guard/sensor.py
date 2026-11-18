@@ -62,6 +62,40 @@ class VirtualAnkerSensor(PeakGuardEntity, SensorEntity):
         return self.coordinator.data.get(self._key)
 
 
+class VirtualEVCCBatterySensor(PeakGuardEntity, SensorEntity):
+    """Expose the measured battery telemetry expected by EVCC."""
+
+    def __init__(
+        self,
+        coordinator: CapacityCoordinator,
+        key: str,
+        name: str,
+    ) -> None:
+        super().__init__(coordinator, coordinator.config_entry)
+        self._key = key
+        self._attr_name = name
+        self._attr_unique_id = f"{coordinator.entry_id}_virtual_evcc_battery_{key}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{coordinator.entry_id}_virtual_evcc_battery")},
+            name="Peak Guard EVCC Battery",
+            manufacturer="Peak Guard",
+            model="EVCC-compatible virtual battery",
+        )
+        if key == "battery_soc":
+            self._attr_native_unit_of_measurement = "%"
+            self._attr_device_class = SensorDeviceClass.BATTERY
+        else:
+            self._attr_native_unit_of_measurement = "W"
+            self._attr_device_class = SensorDeviceClass.POWER
+            self._attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def native_value(self):
+        if not self.coordinator.data.get("available"):
+            return None
+        return self.coordinator.data.get(self._key)
+
+
 async def async_setup_entry(hass, entry, async_add_entities):
     coordinator : CapacityCoordinator = hass.data[DOMAIN][entry.entry_id]
 
@@ -195,6 +229,16 @@ async def async_setup_entry(hass, entry, async_add_entities):
         VirtualAnkerSensor(
             coordinator,
             "virtual_anker_power_w",
+            "Power",
+        ),
+        VirtualEVCCBatterySensor(
+            coordinator,
+            "battery_soc",
+            "State of Charge",
+        ),
+        VirtualEVCCBatterySensor(
+            coordinator,
+            "battery_power_w",
             "Power",
         ),
     ])

@@ -167,6 +167,23 @@ official integration's control values:
 This virtual device reports controller state only; it does not communicate
 with or control an Anker battery.
 
+## Virtual EVCC battery
+
+PeakPilot exposes an EVCC-compatible virtual battery device with **State of
+Charge** and **Power** sensors. These mirror the configured battery sensors;
+power uses EVCC's convention of positive = discharging and negative =
+charging. The **EVCC Battery Mode** select accepts `normal` and `hold`.
+
+EVCC's Home Assistant battery template uses `modeNormal` and `modeHold` script
+entities for battery commands. Configure those scripts to select `normal` and
+`hold` on PeakPilot's EVCC Battery Mode entity, respectively. In `hold`, Peak
+Guard prevents battery discharge while still allowing its charging modes.
+Returning to `normal` restores regular peak protection and charging behavior.
+
+The virtual battery does not control the inverter directly. Peak Guard
+continues to expose its signed setpoint for a separate battery-control
+automation or integration.
+
 ## Runtime configuration numbers
 
 These number entities can be changed in Home Assistant. Defaults and allowed

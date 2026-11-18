@@ -5,7 +5,7 @@ from .coordinator import CapacityCoordinator
 
 from .const import DOMAIN
 
-PLATFORMS = ["sensor", "number", "binary_sensor"]
+PLATFORMS = ["sensor", "number", "binary_sensor", "select"]
 
 
 async def async_setup_entry(

@@ -132,6 +132,12 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         }
         self.battery_power_sensor = config.get("battery_power_sensor")
         self.battery_power_sign = config.get("battery_power_sign", "positive_discharge")
+        evcc_battery_mode = config_entry.options.get("evcc_battery_mode")
+        self.evcc_battery_mode = (
+            evcc_battery_mode
+            if evcc_battery_mode in ("normal", "hold")
+            else "normal"
+        )
         self.controller = self._new_controller()
 
         self.history_restore_attempted = False
@@ -190,6 +196,21 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             options={
                 **self.config_entry.options,
                 "switch_soc_threshold": switch_soc_threshold,
+            },
+        )
+        await self.async_request_refresh()
+
+    async def async_set_evcc_battery_mode(self, mode: str) -> None:
+        """Set the EVCC battery mode and refresh the calculated setpoint."""
+        if mode not in ("normal", "hold"):
+            raise ValueError(f"Unknown EVCC battery mode: {mode}")
+
+        self.evcc_battery_mode = mode
+        self.hass.config_entries.async_update_entry(
+            self.config_entry,
+            options={
+                **self.config_entry.options,
+                "evcc_battery_mode": mode,
             },
         )
         await self.async_request_refresh()
@@ -331,6 +352,9 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.peak_manager = PeakManager.from_dict(saved["peak_manager"])
                 self.controller.restore_state(saved.get("controller"))
                 self.mode_manager.restore_state(saved.get("mode_manager"))
+                evcc_mode = saved.get("evcc_battery_mode", "normal")
+                if evcc_mode in ("normal", "hold"):
+                    self.evcc_battery_mode = evcc_mode
             else:
                 self.peak_manager = PeakManager.from_dict(saved)
         except Exception:
@@ -350,6 +374,7 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "peak_manager": self.peak_manager.to_dict(),
                 "controller": self.controller.to_dict(),
                 "mode_manager": self.mode_manager.to_dict(),
+                "evcc_battery_mode": self.evcc_battery_mode,
             })
         except Exception:
             _LOGGER.exception("PeakPilot could not save runtime state")
@@ -466,7 +491,11 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 allowed_grid_power_w=remaining_power_w,
                 battery_soc=battery_soc,
                 now=now,
-                max_discharge_w=min(self.max_discharge_w, export_safe_max_w),
+                max_discharge_w=(
+                    0.0
+                    if self.evcc_battery_mode == "hold"
+                    else min(self.max_discharge_w, export_safe_max_w)
+                ),
                 # A genuine peak excursion must be able to start discharge
                 # immediately, regardless of the normal minimum-off timer.
                 # This also lets an unexpected load interrupt either charge mode.
@@ -504,6 +533,11 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 minimum_solar_surplus_w=DEFAULT_MIN_SOLAR_SURPLUS_W,
                 minimum_grid_charge_headroom_w=DEFAULT_MIN_GRID_CHARGE_HEADROOM_W,
             )
+            if self.evcc_battery_mode == "hold" and discharge_required:
+                mode = "idle"
+                mode_reason = "evcc_hold_discharge"
+                self.mode_manager.mode = mode
+                self.mode_manager.reason = mode_reason
 
             if mode == "discharge":
                 setpoint_w = discharge_setpoint_w
@@ -577,6 +611,7 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "virtual_anker_operating_mode": virtual_anker_operating_mode,
             "virtual_anker_grid_flow": virtual_anker_grid_flow,
             "virtual_anker_power_w": virtual_anker_power_w,
+            "evcc_battery_mode": self.evcc_battery_mode,
             "grid_charging_blocked": self.mode_manager.discharge_started_this_block,
             "available_solar_surplus_w": solar_surplus_w,
             "available_peak_headroom_w": available_peak_headroom_w,
