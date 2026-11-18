@@ -570,19 +570,28 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             mode = "idle"
             mode_reason = "control_data_invalid"
 
-        virtual_anker_operating_mode = (
+        virtual_anker_disabled = (
+            self.evcc_battery_mode == "hold"
+        )
+        virtual_anker_surplus_active = (
+            battery_soc >= self.controller_settings["max_charge_soc"]
+        )
+        virtual_anker_set_power_zero = (
+            virtual_anker_disabled or virtual_anker_surplus_active
+        )
+        virtual_anker_operating_mode =  (
             "self_consumption"
-            if battery_soc >= self.controller_settings["max_charge_soc"]
+            if virtual_anker_surplus_active
             else "third_party_control"
         )
         virtual_anker_power_w = (
             int(round(abs(setpoint_w)))
-            if virtual_anker_operating_mode == "third_party_control"
+            if not virtual_anker_set_power_zero
             else 0
         )
         virtual_anker_grid_flow = (
             "discharge"
-            if virtual_anker_operating_mode == "third_party_control"
+            if not virtual_anker_set_power_zero
             and setpoint_w > 0.0
             else "charge"
         )

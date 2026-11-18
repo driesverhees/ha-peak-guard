@@ -160,10 +160,11 @@ official integration's control values:
 
 | Sensor | Values / unit | Behavior |
 | --- | --- | --- |
-| Operating Mode | `self_consumption`, `third_party_control` | Uses `self_consumption` when SoC is above **Maximum Charging SoC**, or when PeakGuard's setpoint is zero. Otherwise uses `third_party_control`. |
-| Grid Power | `charge`, `discharge` | Mirrors the direction of PeakGuard's signed setpoint while in third-party-control mode; otherwise `charge`. |
-| Power | W | Absolute PeakGuard setpoint in third-party-control mode; otherwise 0 W. |
+| Operating Mode | `third_party_control` | Keeps the virtual battery under explicit setpoint control. |
+| Grid Power | `charge`, `discharge` | Mirrors the direction of PeakGuard's signed setpoint when enabled; otherwise `charge` with zero power. |
+| Power | W | Absolute PeakGuard setpoint, or 0 W while EVCC mode is `hold` or SoC is at/above **Maximum Charging SoC**. |
 
+At zero power, third-party control prevents both charging and discharging.
 This virtual device reports controller state only; it does not communicate
 with or control an Anker battery.
 
