@@ -581,7 +581,7 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         virtual_anker_operating_mode =  (
             "self_consumption"
-            if virtual_anker_surplus_active
+            if virtual_anker_surplus_active and not virtual_anker_disabled
             else "third_party_control"
         )
         virtual_anker_power_w = (
