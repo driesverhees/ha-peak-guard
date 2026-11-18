@@ -175,10 +175,26 @@ power uses EVCC's convention of positive = discharging and negative =
 charging. The **EVCC Battery Mode** select accepts `normal` and `hold`.
 
 EVCC's Home Assistant battery template uses `modeNormal` and `modeHold` script
-entities for battery commands. Configure those scripts to select `normal` and
-`hold` on PeakPilot's EVCC Battery Mode entity, respectively. In `hold`, Peak
-Guard prevents battery discharge while still allowing its charging modes.
-Returning to `normal` restores regular peak protection and charging behavior.
+entities for battery commands. PeakPilot provides both scripts in
+`custom_components/peak_guard/evcc_scripts.yaml`. Load them as a Home Assistant
+package by adding this under the existing `homeassistant:` section of
+`configuration.yaml`:
+
+```yaml
+homeassistant:
+  packages:
+    peak_guard_evcc: !include custom_components/peak_guard/evcc_scripts.yaml
+```
+
+If you already configure packages, add the `peak_guard_evcc` entry to that
+existing mapping. Then reload scripts (or restart Home Assistant) and select
+`script.peak_guard_evcc_normal` for EVCC's **Normal Mode Script** and
+`script.peak_guard_evcc_hold` for **Hold Mode Script**. In `hold`, Peak Guard
+sets battery power to zero, blocking both charging and discharging. Returning
+to `normal` restores regular peak protection and charging behavior.
+
+The scripts target `select.peak_guard_evcc_battery_mode`. If you change that
+entity's ID in Home Assistant, update the target in `evcc_scripts.yaml` too.
 
 The virtual battery does not control the inverter directly. Peak Guard
 continues to expose its signed setpoint for a separate battery-control

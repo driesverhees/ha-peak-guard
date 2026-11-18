@@ -533,9 +533,9 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 minimum_solar_surplus_w=DEFAULT_MIN_SOLAR_SURPLUS_W,
                 minimum_grid_charge_headroom_w=DEFAULT_MIN_GRID_CHARGE_HEADROOM_W,
             )
-            if self.evcc_battery_mode == "hold" and discharge_required:
+            if self.evcc_battery_mode == "hold":
                 mode = "idle"
-                mode_reason = "evcc_hold_discharge"
+                mode_reason = "evcc_hold"
                 self.mode_manager.mode = mode
                 self.mode_manager.reason = mode_reason
 

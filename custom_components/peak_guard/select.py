@@ -19,6 +19,7 @@ class EVCCBatteryModeSelect(PeakGuardEntity, SelectEntity):
     def __init__(self, coordinator: CapacityCoordinator) -> None:
         super().__init__(coordinator, coordinator.config_entry)
         self._attr_name = "EVCC Battery Mode"
+        self._attr_entity_id = "select.peak_guard_evcc_battery_mode"
         self._attr_unique_id = f"{coordinator.entry_id}_evcc_battery_mode"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{coordinator.entry_id}_virtual_evcc_battery")},

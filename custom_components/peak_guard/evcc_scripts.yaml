@@ -1,0 +1,20 @@
+script:
+  peak_guard_evcc_normal:
+    alias: Peak Guard EVCC Normal
+    sequence:
+      - service: select.select_option
+        target:
+          entity_id: select.peak_guard_evcc_battery_mode
+        data:
+          option: normal
+    mode: single
+
+  peak_guard_evcc_hold:
+    alias: Peak Guard EVCC Hold
+    sequence:
+      - service: select.select_option
+        target:
+          entity_id: select.peak_guard_evcc_battery_mode
+        data:
+          option: hold
+    mode: single
