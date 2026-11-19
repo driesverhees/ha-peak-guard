@@ -1,0 +1,31 @@
+alias: Sync Peak Guard to Anker Solarbank
+mode: restart
+
+trigger:
+  - platform: state
+    entity_id:
+      - sensor.anker_solix_solarbank_max_ac_grid_power
+      - sensor.anker_solix_solarbank_max_ac_operating_mode
+      - sensor.anker_solix_solarbank_max_ac_power
+
+variables:
+  mode: "{{ states('sensor.anker_solix_solarbank_max_ac_operating_mode') }}"
+  flow: "{{ states('sensor.anker_solix_solarbank_max_ac_grid_power') }}"
+  power: "{{ states('sensor.anker_solix_solarbank_max_ac_power') | float(0) }}"
+
+actions:
+  - action: select.select_option
+    target:
+      entity_id: select.kelder_anker_solix_solarbank_max_ac_303_bedrijfsmodus_apparaat_werkt_in_externe_modus
+    data:
+      option: "{{ mode }}"
+  - action: select.select_option
+    target:
+      entity_id: select.kelder_anker_solix_solarbank_max_ac_303_netvermogen
+    data:
+      option: "{{ flow }}"
+  - action: number.set_value
+    target:
+      entity_id: number.kelder_anker_solix_solarbank_max_ac_303_vermogensbesturing
+    data:
+      value: "{{ power }}"

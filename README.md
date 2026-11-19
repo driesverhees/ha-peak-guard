@@ -85,7 +85,8 @@ When discharge is not required, the mode manager can select:
   500 W of peak headroom remains after the configurable grid-charge margin
   and discharge has not already started in the current quarter-hour. Charging
   is limited by both the battery's configured maximum and the separate
-  **Maximum Grid Charge Power** number; the lower limit applies. The charge
+  **Maximum Grid Charge Power** number; the lower limit applies. Grid charging
+  ramps up at the separately configurable **Grid Charge Ramp Rate**. The charge
   setpoint is additionally capped so projected grid import does not exceed
   the lower of the target peak and the remaining quarter-hour energy budget.
 - **Idle:** when neither charging mode is eligible.
@@ -215,7 +216,8 @@ ranges are shown below.
 | PI Integral Gain | 0.01 | 0–0.2 / 0.001 | Integral response to sustained peak error. |
 | Battery Activation Threshold | 300 W | 0–5000 W / 50 | Error needed to activate discharge; a charging-mode interruption or immediate peak excursion can bypass the normal minimum-off delay. |
 | Battery Deactivation Threshold | 100 W | 0–3000 W / 50 | Negative error threshold used when considering discharge deactivation. |
-| Battery Power Ramp Rate | 200 W/s | 1–5000 W/s / 25 | Limits normal changes in discharge and charge setpoints. |
+| Battery Power Ramp Rate | 200 W/s | 1–5000 W/s / 25 | Limits normal changes in discharge and solar-charge setpoints. |
+| Grid Charge Ramp Rate | 50 W/s | 1–1000 W/s / 25 | Limits increases in grid-charge power; reductions remain immediate. |
 | Minimum Battery On Time | 120 s | 0–900 s / 10 | Minimum time before the controller may deactivate after starting. |
 | Minimum Battery Off Time | 120 s | 0–900 s / 10 | Normal delay before starting after stopping; urgent peak protection can force activation. |
 | Grid Power Filter Time | 5 s | 0–60 s / 1 | Smoothing time for grid power in the PI controller. |

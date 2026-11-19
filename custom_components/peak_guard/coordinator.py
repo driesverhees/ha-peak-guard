@@ -33,6 +33,7 @@ from .const import (
     DEFAULT_MAX_CHARGE_SOC,
     DEFAULT_GRID_CHARGE_MARGIN_W,
     DEFAULT_MIN_GRID_CHARGE_HEADROOM_W,
+    DEFAULT_GRID_CHARGE_RAMP_RATE_W_PER_S,
     DEFAULT_SOLAR_SURPLUS_MARGIN_W,
     DEFAULT_MIN_SOLAR_SURPLUS_W,
 )
@@ -122,6 +123,10 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )),
             "grid_charge_margin_w": float(config.get(
                 "grid_charge_margin_w", DEFAULT_GRID_CHARGE_MARGIN_W
+            )),
+            "grid_charge_ramp_rate_w_per_s": float(config.get(
+                "grid_charge_ramp_rate_w_per_s",
+                DEFAULT_GRID_CHARGE_RAMP_RATE_W_PER_S,
             )),
             "max_grid_charge_w": float(
                 config.get("max_grid_charge_w", legacy_grid_charge_w)
@@ -417,7 +422,12 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise ValueError(f"Unsupported power unit: {unit}")
         return value
 
-    def _ramp_charge_setpoint(self, desired_w: float, now: datetime) -> float:
+    def _ramp_charge_setpoint(
+        self,
+        desired_w: float,
+        now: datetime,
+        ramp_rate_w_per_s: float | None = None,
+    ) -> float:
         """Ramp charge power up; reduce charging immediately when needed."""
         now_ts = now.timestamp()
         if self._last_control_update_ts is None:
@@ -428,7 +438,12 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         previous = self.mode_manager.last_charge_setpoint_w
         if desired_w < previous:
             # Increasing charge magnitude is ramp limited.
-            max_change = self.controller_settings["ramp_rate_w_per_s"] * dt
+            ramp_rate = (
+                self.controller_settings["ramp_rate_w_per_s"]
+                if ramp_rate_w_per_s is None
+                else ramp_rate_w_per_s
+            )
+            max_change = ramp_rate * dt
             result = max(desired_w, previous - max_change)
         else:
             # Reduce charge immediately if solar surplus/headroom disappears.
@@ -563,7 +578,11 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self.controller_settings["max_grid_charge_w"],
                     max(0.0, available_peak_headroom_w),
                 )
-                setpoint_w = self._ramp_charge_setpoint(-charge_power_w, now)
+                setpoint_w = self._ramp_charge_setpoint(
+                    -charge_power_w,
+                    now,
+                    self.controller_settings["grid_charge_ramp_rate_w_per_s"],
+                )
             else:
                 setpoint_w = 0.0
                 self.mode_manager.last_charge_setpoint_w = 0.0
