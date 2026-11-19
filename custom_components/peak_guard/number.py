@@ -94,6 +94,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         ControllerSettingNumber(coordinator, "anti_windup_time_s", "PI Anti-windup Tracking Time", 1, 120, 1, "s"),
         ControllerSettingNumber(coordinator, "export_safety_margin_w", "Export Safety Margin", 0, 1000, 10, "W"),
         ControllerSettingNumber(
+            coordinator, "grid_charge_margin_w", "Grid Charging Margin", 0, 1000, 10, "W"
+        ),
+        ControllerSettingNumber(
             coordinator,
             "max_grid_charge_w",
             "Maximum Grid Charge Power",

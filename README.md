@@ -82,10 +82,12 @@ When discharge is not required, the mode manager can select:
   configured maximum charging power and uses a 100 W surplus reserve. The
   grid-charging limit does not restrict solar charging.
 - **Grid charge:** when SoC is below the grid-charging SoC limit, at least
-  500 W of peak headroom remains after a 200 W grid-charge margin, and
-  discharge has not already started in the current quarter-hour. Charging is
-  limited by both the battery's configured maximum and the separate
-  **Maximum Grid Charge Power** number; the lower limit applies.
+  500 W of peak headroom remains after the configurable grid-charge margin
+  and discharge has not already started in the current quarter-hour. Charging
+  is limited by both the battery's configured maximum and the separate
+  **Maximum Grid Charge Power** number; the lower limit applies. The charge
+  setpoint is additionally capped so projected grid import does not exceed
+  the lower of the target peak and the remaining quarter-hour energy budget.
 - **Idle:** when neither charging mode is eligible.
 
 Solar surplus is estimated from grid power plus measured battery discharge.
@@ -219,6 +221,7 @@ ranges are shown below.
 | Grid Power Filter Time | 5 s | 0–60 s / 1 | Smoothing time for grid power in the PI controller. |
 | PI Anti-windup Tracking Time | 15 s | 1–120 s / 1 | Back-calculation tracking time; smaller values correct integral windup faster. |
 | Export Safety Margin | 150 W | 0–1000 W / 10 | Consumption margin retained when calculating safe discharge. |
+| Grid Charging Margin | 200 W | 0–1000 W / 10 | Headroom kept below the target peak while grid charging. |
 | Maximum Grid Charge Power | Battery maximum charging power | 0–20000 W / 100 | Additional cap for grid charging only; the effective grid limit is the lower of this value and the battery maximum configured above. |
 | Grid Charging SoC Limit | 60% | 0–100% / 1 | Grid charging is not selected at or above this SoC. |
 | Maximum Charging SoC | 80% | 0–100% / 1 | Controlled charging is not selected at or above this SoC. |

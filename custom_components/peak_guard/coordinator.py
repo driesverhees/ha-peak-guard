@@ -120,6 +120,9 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "export_safety_margin_w": float(config.get(
                 "export_safety_margin_w", DEFAULT_EXPORT_SAFETY_MARGIN_W
             )),
+            "grid_charge_margin_w": float(config.get(
+                "grid_charge_margin_w", DEFAULT_GRID_CHARGE_MARGIN_W
+            )),
             "max_grid_charge_w": float(
                 config.get("max_grid_charge_w", legacy_grid_charge_w)
             ),
@@ -510,10 +513,16 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Estimate PV surplus from net grid power plus measured battery
             # discharge (negative measured battery power means charging).
             solar_surplus_w = max(0.0, -(grid_power_w + battery_power_w))
-            grid_charge_margin_w = DEFAULT_GRID_CHARGE_MARGIN_W
+            grid_charge_margin_w = self.controller_settings["grid_charge_margin_w"]
+            max_grid_import_w = min(
+                remaining_power_w,
+                self.target_peak_kw * 1000.0,
+            )
             available_peak_headroom_w = max(
                 0.0,
-                remaining_power_w - grid_power_w - grid_charge_margin_w,
+                max_grid_import_w
+                - (grid_power_w + battery_power_w)
+                - grid_charge_margin_w,
             )
 
             discharge_required = (
