@@ -116,5 +116,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
             unique_id_key="max_charge_w",
         ),
         ControllerSettingNumber(coordinator, "grid_charge_soc_limit", "Grid Charging SoC Limit", 0, 100, 1, "%"),
+        ControllerSettingNumber(
+            coordinator,
+            "grid_charge_soc_hysteresis",
+            "Grid Charging SoC Hysteresis",
+            0,
+            20,
+            0.5,
+            "%",
+        ),
         ControllerSettingNumber(coordinator, "max_charge_soc", "Maximum Charging SoC", 0, 100, 1, "%"),
     ])

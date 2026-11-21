@@ -1,10 +1,35 @@
-# ha-peak-guard
+# Home Assistant Integration: Peak Guard (Capacity Tariff)
 
-PeakPilot calculates battery power setpoints to help keep grid import within a
+<img src="custom_components/peak_guard/brand/icon@2x.png" alt="Peak Guard icon" width="96">
+
+Peak Guard calculates battery power setpoints to help keep grid import within a
 configurable quarter-hour peak target. It exposes measurements, controller
 status, and signed setpoints in Home Assistant. **It does not send commands to
 the battery**; use the setpoint sensors in your own automation if you want to
 control an inverter.
+
+> **Scope:** This integration was developed for my own setup, using an Anker
+> battery and an EVCC-controlled charger. It is not intended to be a generic
+> integration for all batteries, inverters, or chargers; other setups may need
+> adaptation and are not guaranteed to work as-is.
+
+## Operating intent
+
+Peak Guard uses the battery to keep grid import within the configured
+quarter-hour peak target. It can discharge to shave a peak and use spare
+capacity below that peak to recharge the battery. Two SoC thresholds define
+when it may grid-charge and when it hands control back to the battery's normal
+operating mode:
+
+- **Grid Charging SoC Limit:** Below this level, Peak Guard may charge from the
+  grid when there is enough headroom to stay within the quarter-hour peak
+  target. Once grid charging starts, the configurable SoC hysteresis lets it
+  continue slightly above this limit.
+- **Maximum Charging SoC:** Between the grid-charging limit and this level,
+  Peak Guard may discharge for peak protection, but charging is only allowed
+  when solar surplus is available. At or above this level, the Virtual Anker
+  control output switches to normal self-consumption and sends zero external
+  power, handing battery operation back to the inverter.
 
 ## Control methodology
 
@@ -84,7 +109,10 @@ When discharge is not required, the mode manager can select:
 - **Grid charge:** when SoC is below the grid-charging SoC limit, at least
   500 W of peak headroom remains after the configurable grid-charge margin
   and discharge has not already started in the current quarter-hour. Charging
-  is limited by both the battery's configured maximum and the separate
+  continues until SoC reaches the limit plus the configurable hysteresis
+  (without exceeding the maximum charging SoC), preventing rapid mode changes
+  near the start threshold. Charge power is limited by both the battery's
+  configured maximum and the separate
   **Maximum Grid Charge Power** number; the lower limit applies. Grid charging
   ramps up at the separately configurable **Grid Charge Ramp Rate**. The charge
   setpoint is additionally capped so projected grid import does not exceed
@@ -225,7 +253,8 @@ ranges are shown below.
 | Export Safety Margin | 150 W | 0–1000 W / 10 | Consumption margin retained when calculating safe discharge. |
 | Grid Charging Margin | 200 W | 0–1000 W / 10 | Headroom kept below the target peak while grid charging. |
 | Maximum Grid Charge Power | Battery maximum charging power | 0–20000 W / 100 | Additional cap for grid charging only; the effective grid limit is the lower of this value and the battery maximum configured above. |
-| Grid Charging SoC Limit | 60% | 0–100% / 1 | Grid charging is not selected at or above this SoC. |
+| Grid Charging SoC Limit | 60% | 0–100% / 1 | Start grid charging below this SoC; once started, charging can continue through the hysteresis band. |
+| Grid Charging SoC Hysteresis | 2% | 0–20% / 0.5 | Once grid charging starts, it can continue until the SoC limit plus this amount, capped by Maximum Charging SoC. |
 | Maximum Charging SoC | 80% | 0–100% / 1 | Controlled charging is not selected at or above this SoC. |
 | Switch SOC threshold | 20% | 0–100% / 1 | Legacy setting entity; currently not used by the active PI/mode-selection logic. |
 

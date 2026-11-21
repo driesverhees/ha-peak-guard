@@ -30,6 +30,7 @@ from .const import (
     DEFAULT_EXPORT_SAFETY_MARGIN_W,
     DEFAULT_MAX_CHARGE_W,
     DEFAULT_GRID_CHARGE_SOC_LIMIT,
+    DEFAULT_GRID_CHARGE_SOC_HYSTERESIS,
     DEFAULT_MAX_CHARGE_SOC,
     DEFAULT_GRID_CHARGE_MARGIN_W,
     DEFAULT_MIN_GRID_CHARGE_HEADROOM_W,
@@ -133,6 +134,10 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ),
             "grid_charge_soc_limit": float(config.get(
                 "grid_charge_soc_limit", DEFAULT_GRID_CHARGE_SOC_LIMIT
+            )),
+            "grid_charge_soc_hysteresis": float(config.get(
+                "grid_charge_soc_hysteresis",
+                DEFAULT_GRID_CHARGE_SOC_HYSTERESIS,
             )),
             "max_charge_soc": float(config.get(
                 "max_charge_soc", DEFAULT_MAX_CHARGE_SOC
@@ -551,6 +556,9 @@ class CapacityCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 discharge_active=(self.controller.is_active or discharge_setpoint_w > 0.0),
                 battery_soc=battery_soc,
                 grid_charge_soc_limit=self.controller_settings["grid_charge_soc_limit"],
+                grid_charge_soc_hysteresis=self.controller_settings[
+                    "grid_charge_soc_hysteresis"
+                ],
                 max_charge_soc=self.controller_settings["max_charge_soc"],
                 solar_surplus_w=solar_surplus_w,
                 available_peak_headroom_w=available_peak_headroom_w,

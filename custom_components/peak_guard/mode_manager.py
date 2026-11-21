@@ -20,6 +20,7 @@ class BatteryModeManager:
         self.mode = "idle"
         self.reason = "waiting_for_control_data"
         self.last_charge_setpoint_w = 0.0
+        self.grid_charge_latched = False
 
     def _update_interval(self, interval_id: int) -> None:
         if self.interval_id != interval_id:
@@ -37,6 +38,7 @@ class BatteryModeManager:
         max_charge_soc: float,
         solar_surplus_w: float,
         available_peak_headroom_w: float,
+        grid_charge_soc_hysteresis: float = 0.0,
         minimum_solar_surplus_w: float = 200.0,
         minimum_grid_charge_headroom_w: float = 500.0,
     ) -> tuple[str, str]:
@@ -44,6 +46,7 @@ class BatteryModeManager:
         self._update_interval(interval_id)
 
         if discharge_required:
+            self.grid_charge_latched = False
             if discharge_active:
                 self.discharge_started_this_block = True
                 self.mode = "discharge"
@@ -52,6 +55,13 @@ class BatteryModeManager:
                 self.mode = "idle"
                 self.reason = "peak_protection_waiting_or_unavailable"
             return self.mode, self.reason
+
+        grid_charge_soc_stop = min(
+            grid_charge_soc_limit + grid_charge_soc_hysteresis,
+            max_charge_soc,
+        )
+        if self.grid_charge_latched and battery_soc >= grid_charge_soc_stop:
+            self.grid_charge_latched = False
 
         # Solar tracking is always allowed (subject to the battery's normal
         # upper SOC limit), including after a discharge in this block.
@@ -65,15 +75,20 @@ class BatteryModeManager:
 
         # Grid charging is the only mode blocked after a discharge request.
         if self.discharge_started_this_block:
+            self.grid_charge_latched = False
             self.mode = "idle"
             self.reason = "grid_charging_blocked_after_discharge"
-        elif battery_soc >= grid_charge_soc_limit:
+        elif not self.grid_charge_latched and (
+            battery_soc >= grid_charge_soc_limit
+            or battery_soc >= max_charge_soc
+        ):
             self.mode = "idle"
             self.reason = "grid_charge_soc_limit"
         elif available_peak_headroom_w < minimum_grid_charge_headroom_w:
             self.mode = "idle"
             self.reason = "insufficient_peak_headroom"
         else:
+            self.grid_charge_latched = True
             self.mode = "grid_charge"
             self.reason = "available_peak_headroom"
 
@@ -86,6 +101,7 @@ class BatteryModeManager:
             "mode": self.mode,
             "reason": self.reason,
             "last_charge_setpoint_w": self.last_charge_setpoint_w,
+            "grid_charge_latched": self.grid_charge_latched,
         }
 
     def restore_state(self, data: dict[str, Any] | None) -> None:
@@ -100,3 +116,4 @@ class BatteryModeManager:
         self.last_charge_setpoint_w = float(
             data.get("last_charge_setpoint_w", 0.0)
         )
+        self.grid_charge_latched = bool(data.get("grid_charge_latched", False))
