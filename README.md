@@ -108,8 +108,10 @@ When discharge is not required, the mode manager can select:
   grid-charging limit does not restrict solar charging.
 - **Grid charge:** when SoC is below the grid-charging SoC limit, at least
   500 W of peak headroom remains after the configurable grid-charge margin
-  and discharge has not already started in the current quarter-hour. Charging
-  continues until SoC reaches the limit plus the configurable hysteresis
+  and discharge has not already started in the current quarter-hour. Once
+  started, it can taper as headroom falls and continues while any headroom
+  remains after the margin; it stops when that headroom is exhausted. Charging
+  also continues until SoC reaches the limit plus the configurable hysteresis
   (without exceeding the maximum charging SoC), preventing rapid mode changes
   near the start threshold. Charge power is limited by both the battery's
   configured maximum and the separate

@@ -56,6 +56,13 @@ class BatteryModeManager:
                 self.reason = "peak_protection_waiting_or_unavailable"
             return self.mode, self.reason
 
+        grid_charge_was_active = self.mode == "grid_charge"
+        headroom_sufficient = (
+            available_peak_headroom_w >= minimum_grid_charge_headroom_w
+            if not grid_charge_was_active
+            else available_peak_headroom_w > 0
+        )
+
         grid_charge_soc_stop = min(
             grid_charge_soc_limit + grid_charge_soc_hysteresis,
             max_charge_soc,
@@ -84,7 +91,7 @@ class BatteryModeManager:
         ):
             self.mode = "idle"
             self.reason = "grid_charge_soc_limit"
-        elif available_peak_headroom_w < minimum_grid_charge_headroom_w:
+        elif not headroom_sufficient:
             self.mode = "idle"
             self.reason = "insufficient_peak_headroom"
         else:
